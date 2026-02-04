@@ -6,6 +6,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"sort"
 	"strings"
 )
 
@@ -31,17 +32,52 @@ type SessionConfig struct {
 	EnvVars map[string]string
 }
 
+// escapeForShell uses $'...' syntax for complete escaping
+func escapeForShell(value string) string {
+	var b strings.Builder
+	b.WriteString("$'")
+	for _, r := range value {
+		switch r {
+		case '\'':
+			b.WriteString("\\'")
+		case '\\':
+			b.WriteString("\\\\")
+		case '\n':
+			b.WriteString("\\n")
+		case '\r':
+			b.WriteString("\\r")
+		case '\t':
+			b.WriteString("\\t")
+		default:
+			b.WriteRune(r)
+		}
+	}
+	b.WriteString("'")
+	return b.String()
+}
+
 // Launch creates or attaches to a tmux session
 func (o *Orchestrator) Launch(cfg SessionConfig) error {
+	// Validate directory exists
+	if _, err := os.Stat(cfg.Dir); err != nil {
+		return fmt.Errorf("directory does not exist: %s", cfg.Dir)
+	}
+
 	sessionName := fmt.Sprintf("ai-%s", cfg.Agent)
 	windowName := filepath.Base(cfg.Dir)
 
 	// Build environment export string with proper escaping
+	// Sort keys for deterministic output
 	var envExports []string
-	for k, v := range cfg.EnvVars {
-		// Escape single quotes in value to prevent shell injection
-		escaped := strings.ReplaceAll(v, "'", "'\"'\"'")
-		envExports = append(envExports, fmt.Sprintf("export %s='%s'", k, escaped))
+	keys := make([]string, 0, len(cfg.EnvVars))
+	for k := range cfg.EnvVars {
+		keys = append(keys, k)
+	}
+	sort.Strings(keys)
+
+	for _, k := range keys {
+		v := cfg.EnvVars[k]
+		envExports = append(envExports, fmt.Sprintf("export %s=%s", k, escapeForShell(v)))
 	}
 	envStr := strings.Join(envExports, " && ")
 
@@ -52,6 +88,8 @@ func (o *Orchestrator) Launch(cfg SessionConfig) error {
 	}
 
 	// Check if session exists
+	// Note: hasSession + create has potential race condition but is acceptable
+	// for this use case since sessions are user-initiated
 	if o.hasSession(sessionName) {
 		// Create new window in existing session
 		args := []string{
@@ -96,6 +134,16 @@ func (o *Orchestrator) run(args ...string) error {
 }
 
 func (o *Orchestrator) attach(sessionName string) error {
+	// Check if already inside tmux
+	if os.Getenv("TMUX") != "" {
+		// Use switch-client instead of attach
+		cmd := exec.Command(o.tmuxPath, "switch-client", "-t", sessionName)
+		cmd.Stdin = os.Stdin
+		cmd.Stdout = os.Stdout
+		cmd.Stderr = os.Stderr
+		return cmd.Run()
+	}
+
 	cmd := exec.Command(o.tmuxPath, "attach", "-t", sessionName)
 	cmd.Stdin = os.Stdin
 	cmd.Stdout = os.Stdout
@@ -108,7 +156,12 @@ func (o *Orchestrator) ListSessions() ([]string, error) {
 	cmd := exec.Command(o.tmuxPath, "list-sessions", "-F", "#{session_name}")
 	output, err := cmd.Output()
 	if err != nil {
-		return nil, nil // No sessions
+		// Check if this is just "no sessions" (exit code 1)
+		var exitErr *exec.ExitError
+		if errors.As(err, &exitErr) && exitErr.ExitCode() == 1 {
+			return nil, nil // No sessions is not an error
+		}
+		return nil, fmt.Errorf("list sessions: %w", err)
 	}
 
 	var sessions []string

@@ -2,32 +2,45 @@
 
 ## 项目概述
 
-**AGX** (AI CLI Session Orchestrator) 是一个基于 tmux 的 AI CLI 会话编排工具，提供 Key 管理、Agent 启动、目录选择和多会话并行管理功能。
+**AGX** (AI CLI Session Orchestrator) 是一个基于 tmux 的 AI CLI 会话编排工具。采用 CLI-first 设计，提供快速启动、参数透传、会话管理和 Key 管理功能。
+
+## 设计理念
+
+- **CLI 优先**：日常操作通过 CLI 命令完成，TUI 仅用于复杂管理
+- **零配置启动**：`agx claude` 即可在当前目录启动会话
+- **参数透传**：`agx claude -c` 直接将 `-c` 传给 claude CLI
+- **tmux 原生**：利用 tmux session/window 实现多会话并行
 
 ## 技术架构
 
-### 核心模块
-
 ```text
-┌─────────────────────────────────────┐
-│           AGX TUI Layer             │
-│  ┌──────────┬──────────┬─────────┐ │
-│  │ Launcher │ DirPicker│ KeyMgr  │ │
-│  └──────────┴──────────┴─────────┘ │
-└──────────────┬──────────────────────┘
-               │
-┌──────────────▼──────────────────────┐
-│        Session Orchestrator         │
-│  - tmux session/window management   │
-│  - Environment variable injection   │
-└──────────────┬──────────────────────┘
-               │
-┌──────────────▼──────────────────────┐
-│         AI CLI Tools                │
-│  - claude-code                      │
-│  - codex-cli                        │
-│  - gemini-cli                       │
-└─────────────────────────────────────┘
+┌────────────────────────────────────────────┐
+│              AGX CLI Layer                 │
+│  ┌──────────────────────────────────────┐  │
+│  │ Command Parser                       │  │
+│  │ agx <agent> [args...] → Launch       │  │
+│  │ agx ls/attach/kill    → Session Mgmt │  │
+│  │ agx keys [sub]        → Key Mgmt     │  │
+│  │ agx (no args)         → TUI Dashboard│  │
+│  └──────────────────────────────────────┘  │
+├────────────────────────────────────────────┤
+│              TUI Layer                     │
+│  ┌────────────┬────────────┐              │
+│  │ Dashboard  │  KeyMgr    │              │
+│  └────────────┴────────────┘              │
+├────────────────────────────────────────────┤
+│         Session Orchestrator               │
+│  - tmux session/window management          │
+│  - 环境变量注入                              │
+│  - 参数透传                                 │
+├────────────────────────────────────────────┤
+│           Key Store                        │
+│  - AES-GCM 加密存储                        │
+│  - Provider 分组                           │
+├────────────────────────────────────────────┤
+│         AI CLI Tools (unmodified)          │
+│  - claude-code / codex-cli / gemini-cli    │
+└────────────────────────────────────────────┘
 ```
 
 ### 技术栈
@@ -37,12 +50,43 @@
 | 语言 | Go 1.22+ | 单二进制，跨平台 |
 | TUI | tview + tcell | 终端 UI 框架 |
 | 加密 | AES-GCM | API Key 加密存储 |
-| 会话 | tmux | session/window 管理 |
+| 会话 | tmux >= 3.0 | session/window 管理 |
 | 配置 | YAML | Key 存储格式 |
+| 主题 | Catppuccin Mocha | 统一配色方案 |
+
+## 命令体系
+
+### 命令解析
+
+```text
+agx                     → TUI Dashboard
+agx keys                → TUI Key Manager
+agx keys ls             → CLI: 列出所有 Key
+agx keys add            → CLI: 添加 Key（交互式/非交互）
+agx keys activate <id>  → CLI: 激活 Key
+agx keys delete <id>    → CLI: 删除 Key
+agx ls                  → CLI: 列出会话
+agx attach <name>       → CLI: 切换会话
+agx a <name>            → CLI: attach 简写
+agx kill <name>         → CLI: 终止会话
+agx <agent> [args...]   → CLI: 启动 session（当前目录）
+```
+
+### 参数透传机制
+
+`agx <agent> [args...]` 中 `args` 直接附加到 agent 命令后：
+
+```bash
+agx claude -c
+# 实际执行: ANTHROPIC_API_KEY=xxx claude -c
+
+agx claude --dangerously-skip-permissions
+# 实际执行: ANTHROPIC_API_KEY=xxx claude --dangerously-skip-permissions
+```
 
 ## 功能模块规范
 
-### 1. Key Manager
+### 1. Key Store
 
 #### 数据结构
 
@@ -58,68 +102,24 @@ type Key struct {
 }
 ```
 
-#### 功能需求
+#### 存储
 
-- **Add Key**: 添加新 Key，自动加密存储
-- **Edit Key**: 修改 Key 信息（Name/Tags）
-- **Delete Key**: 删除 Key
-- **Activate Key**: 激活 Key（同 Provider 只能有一个 Active）
-- **List Keys**: 显示所有 Key，标记 Active 状态
+- 路径: `~/.config/agx/keys.yaml`
+- 权限: `0600`
+- 加密密钥: 环境变量 `AGX_SECRET`（32 字节）
 
-#### 存储位置
+#### 操作
 
-- 默认路径: `~/.config/agx/keys.yaml`
-- 权限: `0600` (仅用户可读写)
-- 加密密钥: 从环境变量 `AGX_SECRET` 读取（32 字节）
+| 操作 | CLI 命令 | TUI 按键 |
+|------|----------|----------|
+| 添加 | `agx keys add [--provider P --name N --key K]` | `a` |
+| 编辑 | - | `e` |
+| 删除 | `agx keys delete <id>` | `d` |
+| 激活 | `agx keys activate <id>` | `Enter` |
+| 列表 | `agx keys ls [--provider P]` | 主页面 |
+| 搜索 | - | `/` |
 
-### 2. CLI Launcher
-
-#### 功能需求
-
-- **Agent 选择**: 列表选择 AI CLI 工具
-  - claude-code
-  - codex-cli
-  - gemini-cli
-- **目录选择**: Tree 风格目录选择器
-- **启动会话**: 创建/复用 tmux session
-
-#### 操作流程
-
-```text
-1. 显示 Agent 列表
-2. 用户选择 Agent (↑↓ + Enter)
-3. 显示目录树
-4. 用户选择目录 (hjkl + Enter)
-5. 检查 Active Key
-6. 创建 tmux session/window
-7. 注入环境变量
-8. attach 到 session
-```
-
-### 3. Directory Picker
-
-#### 功能需求
-
-- **Tree 显示**: 显示目录树结构
-- **Vim 键位**: hjkl 导航
-- **历史记忆**: 记录最近使用的目录
-- **快速跳转**: 输入路径快速跳转
-
-#### UI 设计
-
-```text
-┌─ Select Directory ─────────────┐
-│ /home/user                     │
-│ ├─ projects/                   │
-│ │  ├─ agx/          ← selected │
-│ │  └─ other/                   │
-│ └─ documents/                  │
-│                                │
-│ [Enter] Confirm  [Esc] Cancel  │
-└────────────────────────────────┘
-```
-
-### 4. Session Orchestrator
+### 2. Session Orchestrator
 
 #### tmux 会话设计
 
@@ -128,22 +128,20 @@ type Key struct {
 | Session | `ai-<agent>` | 每个 Agent 一个 session |
 | Window | `<dir-name>` | 每个目录一个 window |
 
-#### 创建逻辑
+#### 启动流程
 
-```bash
-# 检查 session 是否存在
-if ! tmux has-session -t ai-claude 2>/dev/null; then
-    # 创建新 session
-    tmux new-session -d -s ai-claude -c /path/to/dir \
-        "export ANTHROPIC_API_KEY=xxx && claude-code"
-else
-    # 创建新 window
-    tmux new-window -t ai-claude -c /path/to/dir \
-        "export ANTHROPIC_API_KEY=xxx && claude-code"
-fi
-
-# attach 到 session
-tmux attach -t ai-claude
+```text
+1. 解析 agent 名称和参数
+2. 获取当前目录 (cwd)
+3. 查找 agent 对应 Provider 的 Active Key
+4. 构建完整命令: <agent-cli> [args...]
+5. 构建环境变量 map
+6. 检查 tmux session 是否存在
+   - 不存在 → new-session
+   - 存在 → new-window
+7. 检测 $TMUX 环境
+   - 在 tmux 内 → switch-client
+   - 在 tmux 外 → attach-session
 ```
 
 #### 环境变量注入
@@ -154,73 +152,86 @@ tmux attach -t ai-claude
 | Claude | `ANTHROPIC_API_KEY` |
 | Gemini | `GOOGLE_API_KEY` |
 
+#### Shell 转义
+
+使用 `$'...'` 语法完整转义 API Key，处理 `'`、`\`、`$`、`` ` `` 等特殊字符。
+
+### 3. Session Dashboard (TUI)
+
+`agx` 无参数时进入。
+
+**布局：**
+
+- 上半部分：Active Sessions 列表（Enter attach, d delete）
+- 下半部分：Quick Start（数字键直接启动）
+- 状态栏：快捷键提示
+- 按 `K` 进入 Key Manager
+
+### 4. Key Manager (TUI)
+
+`agx keys` 无子命令时进入。
+
+**功能：**
+
+- 按 Provider 分组显示
+- 空 Provider 显示提示文字
+- 支持搜索过滤（`/`）
+- 删除需确认（Modal，默认 Cancel）
+
 ## 项目结构
 
 ```text
 agx/
 ├── cmd/
 │   └── agx/
-│       └── main.go           # 入口文件
+│       └── main.go              # 命令解析、子命令分发
 ├── internal/
 │   ├── key/
-│   │   └── store.go          # Key 管理 (已实现)
+│   │   ├── store.go             # Key CRUD + 加密
+│   │   └── store_test.go        # Key Store 测试
 │   ├── tui/
-│   │   ├── launcher.go       # CLI Launcher
-│   │   ├── dirpicker.go      # 目录选择器
-│   │   └── keymgr.go         # Key 管理 UI
+│   │   ├── theme.go             # Catppuccin Mocha 主题
+│   │   ├── dashboard.go         # Session Dashboard (新)
+│   │   ├── launcher.go          # Agent 选择（保留，Dashboard 内用）
+│   │   ├── dirpicker.go         # 目录选择器（保留，可选）
+│   │   └── keymgr.go            # Key 管理 UI
 │   ├── session/
-│   │   └── orchestrator.go   # tmux 会话管理
+│   │   ├── orchestrator.go      # tmux 会话管理
+│   │   └── orchestrator_test.go # Orchestrator 测试
 │   └── config/
-│       └── config.go         # 配置管理
+│       └── config.go            # 配置管理
+├── DESIGN.md                    # UX 设计文档
+├── SPEC.md                      # 技术规范（本文件）
+├── TODO.md                      # 任务列表
+├── README.md                    # 用户文档
 ├── go.mod
-├── go.sum
-└── README.md
+└── go.sum
 ```
 
-## MVP 功能清单
+## 安全要求
 
-### Phase 1: 核心功能 (当前)
-
-- [x] Key Store 实现 (AES-GCM 加密)
-- [ ] CLI Launcher TUI
-- [ ] Directory Picker TUI
-- [ ] Key Manager TUI
-- [ ] Session Orchestrator (tmux 集成)
-- [ ] 环境变量注入
-- [ ] 基础命令行参数
-
-### Phase 2: 增强功能 (后续)
-
-- [ ] 历史目录记忆
-- [ ] Session Dashboard
-- [ ] Pane 支持 (日志/调试)
-- [ ] 配置文件管理
-- [ ] 自定义 Agent 支持
-
-## 开发规范
-
-### 代码风格
-
-- 遵循 Go 官方代码规范
-- 使用 `gofmt` 格式化代码
-- 错误处理必须显式检查
-
-### 测试要求
-
-- 单元测试覆盖率 > 80%
-- 关键路径必须有集成测试
-- 使用 `go test -race` 检查并发问题
-
-### 安全要求
-
-- API Key 必须加密存储
+- API Key 使用 AES-GCM 加密存储
 - 配置文件权限 `0600`
-- 不在日志中输出敏感信息
+- 不在日志/终端输出中显示明文 Key
+- Shell 命令中 Key 使用完整转义
 - 使用 `gitleaks` 检查敏感信息泄露
 
-## 依赖管理
+## 构建与部署
 
-### 核心依赖
+```bash
+# 开发构建
+go build -o agx ./cmd/agx
+
+# 生产构建
+go build -ldflags="-s -w" -o agx ./cmd/agx
+
+# 安装
+go install ./cmd/agx
+```
+
+## 外部依赖
+
+### Go 模块
 
 ```go
 require (
@@ -231,114 +242,7 @@ require (
 )
 ```
 
-### 外部工具
+### 系统依赖
 
-- **tmux**: 版本 >= 3.0
-- **gitleaks**: 敏感信息检测
-- **trivy**: 依赖漏洞扫描 (可选)
-
-## 配置文件
-
-### keys.yaml
-
-```yaml
-keys:
-  - id: "uuid-1"
-    provider: "claude"
-    name: "key-claude"
-    api_key: "encrypted-base64-string"
-    tags: ["cache", "code"]
-    active: true
-    created_at: "2026-02-04T00:00:00Z"
-```
-
-### config.yaml (未来)
-
-```yaml
-default_dir: "/home/user/projects"
-history_size: 10
-agents:
-  - name: "claude-code"
-    command: "claude-code"
-  - name: "codex-cli"
-    command: "codex-cli"
-```
-
-## 构建与部署
-
-### 构建命令
-
-```bash
-# 开发构建
-go build -o agx ./cmd/agx
-
-# 生产构建
-go build -ldflags="-s -w" -o agx ./cmd/agx
-
-# 跨平台构建
-GOOS=linux GOARCH=amd64 go build -o agx-linux ./cmd/agx
-GOOS=darwin GOARCH=arm64 go build -o agx-darwin ./cmd/agx
-```
-
-### 安装
-
-```bash
-# 安装到 $GOPATH/bin
-go install ./cmd/agx
-
-# 或手动复制
-cp agx /usr/local/bin/
-```
-
-## 使用示例
-
-### 首次使用
-
-```bash
-# 1. 设置加密密钥
-export AGX_SECRET="your-32-byte-secret-key-here"
-
-# 2. 添加 API Key
-agx key add --provider claude --name key-claude --key sk-xxx --tags cache,code
-
-# 3. 激活 Key
-agx key activate <key-id>
-
-# 4. 启动 AGX
-agx
-```
-
-### 日常使用
-
-```bash
-# 直接启动 TUI
-agx
-
-# 或指定 Agent
-agx --agent claude-code
-
-# 或指定目录
-agx --dir /path/to/project
-```
-
-## 故障排查
-
-### 常见问题
-
-1. **tmux session 无法创建**
-   - 检查 tmux 是否安装: `which tmux`
-   - 检查 tmux 版本: `tmux -V`
-
-2. **API Key 解密失败**
-   - 检查 `AGX_SECRET` 环境变量
-   - 确保密钥长度为 32 字节
-
-3. **TUI 显示异常**
-   - 检查终端是否支持 256 色: `echo $TERM`
-   - 尝试设置: `export TERM=xterm-256color`
-
-## 参考资料
-
-- [tview 文档](https://github.com/rivo/tview)
-- [tmux 手册](https://man.openbsd.org/tmux)
-- [Go AES-GCM 示例](https://pkg.go.dev/crypto/cipher#example-NewGCM)
+- **tmux** >= 3.0
+- **gitleaks**: 敏感信息检测（开发时）

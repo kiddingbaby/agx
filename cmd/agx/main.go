@@ -56,6 +56,9 @@ func main() {
 	// Create TUI application
 	app := tview.NewApplication()
 
+	// Apply theme to app (sets background color)
+	tui.CurrentTheme.ApplyToApp(app)
+
 	// Pages for navigation
 	pages := tview.NewPages()
 
@@ -70,7 +73,8 @@ func main() {
 	// Status bar
 	status := tview.NewTextView().
 		SetDynamicColors(true).
-		SetText(" [yellow]AGX[white] | [green]↑↓/jk[white] Navigate | [green]Enter[white] Select | [green]Esc[white] Back | [green]K[white] Keys | [green]q[white] Quit")
+		SetText(" [#f9e2af]AGX[#cdd6f4] | [#a6e3a1]↑↓/jk[#cdd6f4] Navigate | [#a6e3a1]Enter[#cdd6f4] Select | [#a6e3a1]Esc[#cdd6f4] Back | [#a6e3a1]K[#cdd6f4] Keys | [#a6e3a1]q[#cdd6f4] Quit")
+	tui.CurrentTheme.ApplyToTextView(status)
 
 	// Main layout
 	mainLayout := tview.NewFlex().SetDirection(tview.FlexRow).

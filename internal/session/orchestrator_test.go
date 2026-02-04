@@ -25,9 +25,8 @@ func TestNewOrchestrator(t *testing.T) {
 
 func TestSessionConfig(t *testing.T) {
 	cfg := SessionConfig{
-		Agent:   "claude-code",
-		Dir:     "/tmp",
-		Command: "claude",
+		Agent: "claude-code",
+		Dir:   "/tmp",
 		EnvVars: map[string]string{
 			"ANTHROPIC_API_KEY": "test-key",
 		},
@@ -62,4 +61,72 @@ func TestListSessions(t *testing.T) {
 	}
 	// sessions can be nil or empty, both are valid
 	_ = sessions
+}
+
+func TestEscapeForShell(t *testing.T) {
+	tests := []struct {
+		name  string
+		input string
+		want  string
+	}{
+		{
+			name:  "simple string",
+			input: "hello",
+			want:  "$'hello'",
+		},
+		{
+			name:  "single quote",
+			input: "it's",
+			want:  "$'it\\'s'",
+		},
+		{
+			name:  "backslash",
+			input: "path\\to\\file",
+			want:  "$'path\\\\to\\\\file'",
+		},
+		{
+			name:  "newline",
+			input: "line1\nline2",
+			want:  "$'line1\\nline2'",
+		},
+		{
+			name:  "tab",
+			input: "col1\tcol2",
+			want:  "$'col1\\tcol2'",
+		},
+		{
+			name:  "carriage return",
+			input: "line\r",
+			want:  "$'line\\r'",
+		},
+		{
+			name:  "dollar sign preserved",
+			input: "$HOME",
+			want:  "$'$HOME'",
+		},
+		{
+			name:  "backtick preserved",
+			input: "`cmd`",
+			want:  "$'`cmd`'",
+		},
+		{
+			name:  "api key with special chars",
+			input: "sk-ant-api03-xxx'yyy$zzz",
+			want:  "$'sk-ant-api03-xxx\\'yyy$zzz'",
+		},
+		{
+			name:  "empty string",
+			input: "",
+			want:  "$''",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got := escapeForShell(tt.input)
+			if got != tt.want {
+				t.Errorf("escapeForShell(%q) = %q, want %q", tt.input, got, tt.want)
+			}
+		})
+	}
 }

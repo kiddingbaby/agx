@@ -1,6 +1,6 @@
 # AGX 任务列表
 
-## 任务状态说明
+## 任务状态
 
 - `pending`: 待开始
 - `in_progress`: 进行中
@@ -8,223 +8,205 @@
 
 ---
 
-## Phase 1: 核心功能实现
+## Phase 1: 核心功能 ✅
 
-### [1] done - 实现 Key Store 加密存储
+> Phase 1 已完成，实现了基础的 TUI 流程和 Key 管理
 
-- **File**: `internal/key/store.go`
-- **Description**: 使用 AES-GCM 实现 API Key 的加密存储，支持 Add/Delete/Activate/GetActive 操作
-- **Dependencies**: []
-- **Created**: 2026-02-03 18:47:00
-- **Updated**: 2026-02-03 18:47:00
-- **Status**: ✅ 已完成
-
----
-
-### [2] done - 实现 CLI Launcher TUI
-
-- **File**: `internal/tui/launcher.go`
-- **Description**: 实现 Agent 选择界面，支持 claude-code/codex-cli/gemini-cli 三种 AI CLI 工具的选择，使用 tview List 组件
-- **Dependencies**: []
-- **Created**: 2026-02-04 00:45:00
-- **Updated**: 2026-02-04 14:54:00
-- **Status**: ✅ 已完成
-
-**实现要点**:
-
-- 使用 `tview.List` 显示 Agent 列表
-- 支持 Vim 键位 (j/k 上下移动)
-- Enter 确认选择
-- Esc 退出
-- 选择后进入 Directory Picker
+| #   | 任务                 | 状态   |
+| --- | -------------------- | ------ |
+| 1   | Key Store 加密存储   | ✅ done |
+| 2   | CLI Launcher TUI     | ✅ done |
+| 3   | Directory Picker TUI | ✅ done |
+| 4   | Key Manager TUI      | ✅ done |
+| 5   | Session Orchestrator | ✅ done |
+| 6   | 主程序入口           | ✅ done |
+| 7   | 单元测试             | ✅ done |
+| 8   | README 文档          | ✅ done |
 
 ---
 
-### [3] done - 实现 Directory Picker TUI
+## Phase 2: CLI-First 重构
 
-- **File**: `internal/tui/dirpicker.go`
-- **Description**: 实现目录树选择器，支持 Vim 键位导航 (hjkl)，显示目录树结构
-- **Dependencies**: [2]
-- **Created**: 2026-02-04 00:45:00
-- **Updated**: 2026-02-04 14:54:00
-- **Status**: ✅ 已完成
+> 目标：CLI 优先、快速启动、参数透传、Session Dashboard
 
-**实现要点**:
+### P0: 核心功能
 
-- 使用 `tview.TreeView` 显示目录树
-- 支持 hjkl 导航
-- Enter 确认目录
-- Esc 返回上一步
-- 显示当前路径
-
----
-
-### [4] done - 实现 Key Manager TUI
-
-- **File**: `internal/tui/keymgr.go`
-- **Description**: 实现 Key 管理界面，支持 Add/Edit/Delete/Activate/List 操作
-- **Dependencies**: []
-- **Created**: 2026-02-04 00:45:00
-- **Updated**: 2026-02-04 14:54:00
-- **Status**: ✅ 已完成
-
-**实现要点**:
-
-- 使用 `tview.Table` 显示 Key 列表
-- 使用 `tview.Form` 实现 Add/Edit 表单
-- 支持快捷键操作 (a: add, d: delete, Enter: activate)
-- 显示 Active 状态标记
-- 密码输入使用 `*` 遮罩
-
----
-
-### [5] done - 实现 Session Orchestrator
-
-- **File**: `internal/session/orchestrator.go`
-- **Description**: 实现 tmux 会话管理，支持 session/window 创建、环境变量注入、attach 操作
-- **Dependencies**: [2, 3, 4]
-- **Created**: 2026-02-04 00:45:00
-- **Updated**: 2026-02-04 14:54:00
-- **Status**: ✅ 已完成
-
-**实现要点**:
-
-- 检查 tmux 是否安装
-- 检查 session 是否存在
-- 创建 session/window
-- 注入环境变量 (ANTHROPIC_API_KEY/OPENAI_API_KEY/GOOGLE_API_KEY)
-- attach 到 session
-- 错误处理
-
----
-
-### [6] done - 实现主程序入口
+#### [P2-1] pending - 重构命令解析
 
 - **File**: `cmd/agx/main.go`
-- **Description**: 实现主程序入口，整合所有模块，支持命令行参数
-- **Dependencies**: [2, 3, 4, 5]
-- **Created**: 2026-02-04 00:45:00
-- **Updated**: 2026-02-04 14:54:00
-- **Status**: ✅ 已完成
-
-**实现要点**:
-
-- 解析命令行参数 (--agent, --dir, --help)
-- 初始化 Key Store
-- 启动 TUI
-- 错误处理和日志
-- 优雅退出
+- **Description**: 重写 main.go，实现新的命令解析逻辑
+- **Details**:
+  - `agx` 无参数 → TUI Dashboard
+  - `agx keys [sub]` → Key 管理
+  - `agx ls/attach/kill` → 会话管理
+  - `agx <agent> [args...]` → 快速启动
 
 ---
 
-### [7] done - 添加单元测试
+#### [P2-2] pending - 实现参数透传
+
+- **File**: `internal/session/orchestrator.go`
+- **Description**: 支持 `agx claude -c` 将 `-c` 透传给 claude CLI
+- **Details**:
+  - `SessionConfig` 增加 `Args []string` 字段
+  - `Launch()` 构建命令时附加 args
+  - 测试: `agx claude -c` → `claude -c`
+
+---
+
+#### [P2-3] pending - 默认当前目录启动
+
+- **File**: `cmd/agx/main.go`, `internal/session/orchestrator.go`
+- **Description**: `agx claude` 默认使用 `cwd`，无需选择目录
+- **Details**:
+  - 移除目录选择步骤
+  - `os.Getwd()` 获取当前目录
+  - 日志显示启动目录
+
+---
+
+### P1: 会话管理
+
+#### [P2-4] pending - 实现 `agx ls` 命令
+
+- **File**: `cmd/agx/main.go`
+- **Description**: CLI 列出所有 AI 会话
+- **Details**:
+  - 调用 `Orchestrator.ListSessions()`
+  - 格式化输出: session 名称、window 数量、创建时间
+
+---
+
+#### [P2-5] pending - 实现 `agx attach` 命令
+
+- **File**: `cmd/agx/main.go`
+- **Description**: CLI 切换到指定会话
+- **Details**:
+  - `agx attach claude` → `ai-claude`
+  - `agx a claude` 简写支持
+  - 检测 `$TMUX` 使用 `switch-client`
+
+---
+
+#### [P2-6] pending - 实现 `agx kill` 命令
+
+- **File**: `cmd/agx/main.go`, `internal/session/orchestrator.go`
+- **Description**: CLI 终止指定会话
+- **Details**:
+  - `Orchestrator.KillSession(name)` 方法
+  - 终止前确认（--force 跳过）
+
+---
+
+### P1: Session Dashboard
+
+#### [P2-7] pending - 实现 Session Dashboard TUI
+
+- **File**: `internal/tui/dashboard.go` (新建)
+- **Description**: `agx` 无参数时显示会话管理界面
+- **Details**:
+  - 上半部分: Active Sessions 列表
+  - 下半部分: Quick Start（Agent 列表）
+  - Enter: attach 选中会话
+  - 数字键: 快速启动 Agent
+  - K: 进入 Key Manager
+  - d: 删除会话
+
+---
+
+### P2: Key 管理改进
+
+#### [P2-8] pending - Key Manager 按 Provider 分组
+
+- **File**: `internal/tui/keymgr.go`
+- **Description**: Key 列表按 Provider 分组显示
+- **Details**:
+  - CLAUDE / OPENAI / GEMINI 三个分组
+  - 空分组显示 "(no keys - press 'a' to add)"
+  - Active Key 显示 `*` 标记
+
+---
+
+#### [P2-9] pending - Key Manager CLI 子命令
+
+- **File**: `cmd/agx/main.go`
+- **Description**: 支持 `agx keys ls/add/activate/delete` CLI 命令
+- **Details**:
+  - `agx keys ls [--provider P]`
+  - `agx keys add --provider P --name N --key K`
+  - `agx keys activate <id>`
+  - `agx keys delete <id>`
+
+---
+
+### P2: 代码质量
+
+#### [P2-10] pending - Shell 转义完整实现
+
+- **File**: `internal/session/orchestrator.go`
+- **Description**: 使用 `$'...'` 语法完整转义 API Key
+- **Details**:
+  - 处理 `'`, `\`, `$`, `` ` ``, `\n` 等字符
+  - 添加 `escapeForShell()` 函数测试
+
+---
+
+#### [P2-11] pending - tmux 嵌套检测
+
+- **File**: `internal/session/orchestrator.go`
+- **Description**: 检测 `$TMUX` 环境，在 tmux 内使用 `switch-client`
+- **Details**:
+  - `os.Getenv("TMUX")` 检测
+  - 在 tmux 内: `tmux switch-client -t <session>`
+  - 在 tmux 外: `tmux attach-session -t <session>`
+
+---
+
+#### [P2-12] pending - 补充测试覆盖
 
 - **File**: `internal/*/\*_test.go`
-- **Description**: 为所有模块添加单元测试，覆盖率 > 80%
-- **Dependencies**: [2, 3, 4, 5, 6]
-- **Created**: 2026-02-04 00:45:00
-- **Updated**: 2026-02-04 14:54:00
-- **Status**: ✅ 已完成
-
-**测试范围**:
-
-- Key Store 加密/解密
-- Key CRUD 操作
-- Session 创建逻辑
-- 环境变量注入
-- 错误处理
-
----
-
-### [8] done - 编写 README 和使用文档
-
-- **File**: `README.md`
-- **Description**: 编写项目 README，包括安装、配置、使用说明
-- **Dependencies**: [6]
-- **Created**: 2026-02-04 00:45:00
-- **Updated**: 2026-02-04 15:00:00
-- **Status**: ✅ 已完成
-
-**文档内容**:
-
-- 项目介绍
-- 安装步骤
-- 快速开始
-- 配置说明
-- 使用示例
-- 故障排查
-
----
-
-## Phase 2: 增强功能 (后续)
-
-### [9] pending - 实现历史目录记忆
-
-- **File**: `internal/config/history.go`
-- **Description**: 记录最近使用的目录，支持快速跳转
-- **Dependencies**: [3]
-- **Created**: 2026-02-04 00:45:00
-- **Updated**: 2026-02-04 00:45:00
-- **Status**: ⏳ 待开始
-
----
-
-### [10] pending - 实现 Session Dashboard
-
-- **File**: `internal/tui/dashboard.go`
-- **Description**: 显示所有活跃的 tmux session，支持切换和管理
-- **Dependencies**: [5]
-- **Created**: 2026-02-04 00:45:00
-- **Updated**: 2026-02-04 00:45:00
-- **Status**: ⏳ 待开始
-
----
-
-### [11] pending - 支持自定义 Agent
-
-- **File**: `internal/config/config.go`
-- **Description**: 支持用户自定义 AI CLI 工具配置
-- **Dependencies**: [6]
-- **Created**: 2026-02-04 00:45:00
-- **Updated**: 2026-02-04 00:45:00
-- **Status**: ⏳ 待开始
+- **Description**: 增加测试覆盖率
+- **Details**:
+  - `internal/key/store_test.go` 补充边界测试
+  - `escapeForShell()` 测试
+  - Dashboard 组件测试（如可行）
 
 ---
 
 ## 任务统计
 
-- **总任务数**: 11
-- **已完成**: 8
-- **进行中**: 0
-- **待开始**: 3
+| Phase   | 总计 | 完成 | 待开始 |
+| ------- | ---- | ---- | ------ |
+| Phase 1 | 8    | 8    | 0      |
+| Phase 2 | 12   | 0    | 12     |
 
 ---
 
 ## 优先级排序
 
-### P0 (必须完成)
+### P0 (必须)
 
-- [2] CLI Launcher TUI
-- [3] Directory Picker TUI
-- [4] Key Manager TUI
-- [5] Session Orchestrator
-- [6] 主程序入口
+- [P2-1] 重构命令解析
+- [P2-2] 参数透传
+- [P2-3] 默认当前目录
 
 ### P1 (重要)
 
-- [7] 单元测试
-- [8] README 文档
+- [P2-4] `agx ls`
+- [P2-5] `agx attach`
+- [P2-6] `agx kill`
+- [P2-7] Session Dashboard
 
-### P2 (增强功能)
+### P2 (改进)
 
-- [9] 历史目录记忆
-- [10] Session Dashboard
-- [11] 自定义 Agent
+- [P2-8] Key Manager 分组
+- [P2-9] Key CLI 子命令
+- [P2-10] Shell 转义
+- [P2-11] tmux 嵌套检测
+- [P2-12] 补充测试
 
 ---
 
 ## 下一步行动
 
-**建议从任务 [2] 开始**: 实现 CLI Launcher TUI
-
-这是用户交互的入口，完成后可以快速验证整体流程。
+**建议从 [P2-1] 开始**: 重构命令解析是所有新功能的基础。

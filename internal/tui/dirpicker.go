@@ -29,12 +29,13 @@ func NewDirPicker(rootPath string) *DirPicker {
 		rootPath: rootPath,
 	}
 
-	d.root = tview.NewTreeNode(rootPath).SetColor(tcell.ColorYellow)
+	d.root = tview.NewTreeNode(rootPath).SetColor(CurrentTheme.Warning)
 	d.root.SetReference(rootPath)
 	d.SetRoot(d.root)
 	d.SetCurrentNode(d.root)
 
 	d.SetTitle(" Select Directory ").SetBorder(true)
+	CurrentTheme.ApplyToTreeView(d.TreeView)
 
 	d.populateNode(d.root, rootPath)
 
@@ -122,7 +123,7 @@ func (d *DirPicker) populateNode(node *tview.TreeNode, path string) {
 	for _, dir := range dirs {
 		childPath := filepath.Join(path, dir.Name())
 		child := tview.NewTreeNode(dir.Name()).SetReference(childPath).SetSelectable(true)
-		child.SetColor(tcell.ColorGreen)
+		child.SetColor(CurrentTheme.Success)
 		node.AddChild(child)
 	}
 }

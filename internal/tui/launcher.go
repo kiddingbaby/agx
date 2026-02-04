@@ -39,6 +39,7 @@ func NewLauncher() *Launcher {
 
 	l.SetTitle(" Select Agent ").SetBorder(true)
 	l.ShowSecondaryText(false)
+	CurrentTheme.ApplyToList(l.List)
 
 	for i, agent := range l.agents {
 		idx := i

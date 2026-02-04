@@ -19,6 +19,11 @@ type KeyManager struct {
 	app      *tview.Application
 }
 
+// Focus delegates focus to the internal table (fixes focus issue)
+func (km *KeyManager) Focus(delegate func(p tview.Primitive)) {
+	delegate(km.table)
+}
+
 // NewKeyManager creates a new key manager UI
 func NewKeyManager(store *key.Store, app *tview.Application) *KeyManager {
 	km := &KeyManager{
@@ -31,6 +36,10 @@ func NewKeyManager(store *key.Store, app *tview.Application) *KeyManager {
 		SetBorders(false).
 		SetSelectable(true, false)
 	km.table.SetTitle(" Keys [a]dd [d]elete [Enter]activate [Esc]close ").SetBorder(true)
+
+	// Apply theme
+	CurrentTheme.ApplyToTable(km.table)
+	CurrentTheme.ApplyToFlex(km.Flex)
 
 	km.pages = tview.NewPages()
 	km.pages.AddPage("table", km.table, true, true)
@@ -78,10 +87,21 @@ func NewKeyManager(store *key.Store, app *tview.Application) *KeyManager {
 func (km *KeyManager) refreshTable() {
 	km.table.Clear()
 
+	// Empty state hint
+	if len(km.store.Keys) == 0 {
+		km.table.SetCell(0, 0, tview.NewTableCell("No keys configured").
+			SetTextColor(CurrentTheme.FgMuted).
+			SetSelectable(false))
+		km.table.SetCell(1, 0, tview.NewTableCell("Press [a] to add a key").
+			SetTextColor(CurrentTheme.FgMuted).
+			SetSelectable(false))
+		return
+	}
+
 	headers := []string{"", "Provider", "Name", "Tags", "Created"}
 	for i, h := range headers {
 		km.table.SetCell(0, i, tview.NewTableCell(h).
-			SetTextColor(tcell.ColorYellow).
+			SetTextColor(CurrentTheme.Warning).
 			SetSelectable(false))
 	}
 
@@ -90,17 +110,21 @@ func (km *KeyManager) refreshTable() {
 		if k.Active {
 			active = "*"
 		}
-		km.table.SetCell(i+1, 0, tview.NewTableCell(active).SetTextColor(tcell.ColorGreen))
+		km.table.SetCell(i+1, 0, tview.NewTableCell(active).SetTextColor(CurrentTheme.Success))
 		km.table.SetCell(i+1, 1, tview.NewTableCell(string(k.Provider)))
 		km.table.SetCell(i+1, 2, tview.NewTableCell(k.Name))
 		km.table.SetCell(i+1, 3, tview.NewTableCell(fmt.Sprintf("%v", k.Tags)))
 		km.table.SetCell(i+1, 4, tview.NewTableCell(k.CreatedAt.Format("2006-01-02")))
 	}
+
+	// Select first data row
+	km.table.Select(1, 0)
 }
 
 func (km *KeyManager) showAddForm() {
 	km.form = tview.NewForm()
 	km.form.SetTitle(" Add Key ").SetBorder(true)
+	CurrentTheme.ApplyToForm(km.form)
 
 	providers := []string{"claude", "openai", "gemini"}
 	var selectedProvider string
