@@ -100,7 +100,7 @@
 
 ### P1: Session Dashboard
 
-#### [P2-7] pending - 实现 Session Dashboard TUI
+#### [P2-7] done - 实现 Session Dashboard TUI
 
 - **File**: `internal/tui/dashboard.go` (新建)
 - **Description**: `agx` 无参数时显示会话管理界面
@@ -178,7 +178,7 @@
 | Phase   | 总计 | 完成 | 待开始 |
 | ------- | ---- | ---- | ------ |
 | Phase 1 | 8    | 8    | 0      |
-| Phase 2 | 12   | 6    | 6      |
+| Phase 2 | 12   | 7    | 5      |
 
 ---
 
@@ -195,7 +195,7 @@
 - [P2-4] `agx ls` ✅
 - [P2-5] `agx attach` ✅
 - [P2-6] `agx kill` ✅
-- [P2-7] Session Dashboard
+- [P2-7] Session Dashboard ✅
 
 ### P2 (改进)
 
@@ -209,4 +209,4 @@
 
 ## 下一步行动
 
-**建议从 [P2-7] 开始**: 实现 Session Dashboard TUI。
+**建议从 [P2-8] 开始**: Key Manager 按 Provider 分组显示。

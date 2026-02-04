@@ -11,25 +11,57 @@ import (
 	"github.com/rivo/tview"
 )
 
-// runTUI runs the main TUI (launcher + dirpicker flow)
-// TODO: Replace with Dashboard in P2-7
+// runTUI runs the main TUI Dashboard
 func runTUI(store *key.Store, orch *session.Orchestrator) {
 	app := tview.NewApplication()
 	tui.CurrentTheme.ApplyToApp(app)
 
 	pages := tview.NewPages()
 
-	var selectedAgent tui.Agent
-
-	// Create components
-	launcher := tui.NewLauncher()
-	dirPicker := tui.NewDirPicker("")
+	// Key manager
 	keyManager := tui.NewKeyManager(store, app)
+
+	// Dashboard callbacks
+	callbacks := tui.DashboardCallbacks{
+		OnAttach: func(sessionName string) {
+			app.Stop()
+			if err := orch.Attach(sessionName); err != nil {
+				fmt.Fprintf(os.Stderr, "Error: %v\n", err)
+				os.Exit(1)
+			}
+		},
+		OnLaunch: func(agent tui.Agent) {
+			launchAgentFromDashboard(app, orch, store, agent)
+		},
+		OnKill: func(sessionName string) {
+			_ = orch.KillSession(sessionName)
+		},
+		OnKeys: func() {
+			pages.SwitchToPage("keymgr")
+			app.SetFocus(keyManager)
+		},
+		OnQuit: func() {
+			app.Stop()
+		},
+	}
+
+	// Dashboard
+	dashboard := tui.NewDashboard(orch, store, app, callbacks)
+
+	// Setup key manager
+	keyManager.SetOnClose(func() {
+		pages.SwitchToPage("dashboard")
+		app.SetFocus(dashboard)
+	})
+
+	// Add pages
+	pages.AddPage("dashboard", dashboard, true, true)
+	pages.AddPage("keymgr", keyManager, true, false)
 
 	// Status bar
 	status := tview.NewTextView().
 		SetDynamicColors(true).
-		SetText(" [#f9e2af]AGX[#cdd6f4] | [#a6e3a1]↑↓/jk[#cdd6f4] Navigate | [#a6e3a1]Enter[#cdd6f4] Select | [#a6e3a1]Esc[#cdd6f4] Back | [#a6e3a1]K[#cdd6f4] Keys | [#a6e3a1]q[#cdd6f4] Quit")
+		SetText(" [#f9e2af]AGX[#cdd6f4] | [#a6e3a1]Enter[#cdd6f4] Attach | [#a6e3a1]1-3[#cdd6f4] Launch | [#a6e3a1]d[#cdd6f4] Kill | [#a6e3a1]K[#cdd6f4] Keys | [#a6e3a1]Tab[#cdd6f4] Switch | [#a6e3a1]q[#cdd6f4] Quit")
 	tui.CurrentTheme.ApplyToTextView(status)
 
 	// Main layout
@@ -37,42 +69,15 @@ func runTUI(store *key.Store, orch *session.Orchestrator) {
 		AddItem(pages, 0, 1, true).
 		AddItem(status, 1, 0, false)
 
-	// Setup launcher
-	launcher.SetOnSelect(func(agent tui.Agent) {
-		selectedAgent = agent
-		pages.SwitchToPage("dirpicker")
-		app.SetFocus(dirPicker)
-	})
-	launcher.SetOnCancel(func() {
-		app.Stop()
-	})
-
-	// Setup directory picker
-	dirPicker.SetOnSelect(func(dir string) {
-		launchSessionFromTUI(app, orch, store, selectedAgent, dir)
-	})
-	dirPicker.SetOnCancel(func() {
-		pages.SwitchToPage("launcher")
-		app.SetFocus(launcher)
-	})
-
-	// Setup key manager
-	keyManager.SetOnClose(func() {
-		pages.SwitchToPage("launcher")
-		app.SetFocus(launcher)
-	})
-
-	// Add pages
-	pages.AddPage("launcher", launcher, true, true)
-	pages.AddPage("dirpicker", dirPicker, true, false)
-	pages.AddPage("keymgr", keyManager, true, false)
-
-	// Global key handler
+	// Global key handler for K to open key manager
 	app.SetInputCapture(func(event *tcell.EventKey) *tcell.EventKey {
-		if event.Key() == tcell.KeyRune && (event.Rune() == 'K' || event.Rune() == 'M') {
-			pages.SwitchToPage("keymgr")
-			app.SetFocus(keyManager)
-			return nil
+		if event.Key() == tcell.KeyRune && event.Rune() == 'K' {
+			name, _ := pages.GetFrontPage()
+			if name == "dashboard" {
+				pages.SwitchToPage("keymgr")
+				app.SetFocus(keyManager)
+				return nil
+			}
 		}
 		return event
 	})
@@ -109,24 +114,22 @@ func runKeyManagerTUI(store *key.Store) {
 	}
 }
 
-// launchSessionFromTUI launches a session from the TUI
-func launchSessionFromTUI(app *tview.Application, orch *session.Orchestrator, store *key.Store, agent tui.Agent, dir string) {
+// launchAgentFromDashboard launches an agent from the dashboard
+func launchAgentFromDashboard(app *tview.Application, orch *session.Orchestrator, store *key.Store, agent tui.Agent) {
 	// Get active key for the agent's provider
 	activeKey, err := store.GetActive(key.Provider(agent.Provider))
 	if err != nil {
-		// Show error modal
-		modal := tview.NewModal().
-			SetText(fmt.Sprintf("No active key for %s.\nPlease add and activate a key first.", agent.Provider)).
-			AddButtons([]string{"OK"}).
-			SetDoneFunc(func(buttonIndex int, buttonLabel string) {
-				app.Stop()
-			})
-		app.SetRoot(modal, true)
+		// Show error in status (modal has complex focus issues)
+		// Just print error and continue - user can press K to add keys
+		fmt.Fprintf(os.Stderr, "No active key for %s. Use 'agx keys' to add one.\n", agent.Provider)
 		return
 	}
 
 	// Stop TUI before launching tmux
 	app.Stop()
+
+	// Get current directory
+	dir := tui.GetCwd()
 
 	// Launch session
 	cfg := session.SessionConfig{

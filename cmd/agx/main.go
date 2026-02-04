@@ -136,7 +136,11 @@ func handleList(orch *session.Orchestrator) {
 
 	fmt.Println("Active AI sessions:")
 	for _, s := range sessions {
-		fmt.Printf("  %s\n", s)
+		attached := ""
+		if s.Attached {
+			attached = " (attached)"
+		}
+		fmt.Printf("  %s  %d windows%s\n", s.Name, s.Windows, attached)
 	}
 }
 

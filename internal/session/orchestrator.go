@@ -152,9 +152,17 @@ func (o *Orchestrator) Attach(sessionName string) error {
 	return cmd.Run()
 }
 
+// SessionInfo holds information about an active session
+type SessionInfo struct {
+	Name       string
+	Windows    int
+	CreatedAt  string
+	Attached   bool
+}
+
 // ListSessions returns all active AI sessions
-func (o *Orchestrator) ListSessions() ([]string, error) {
-	cmd := exec.Command(o.tmuxPath, "list-sessions", "-F", "#{session_name}")
+func (o *Orchestrator) ListSessions() ([]SessionInfo, error) {
+	cmd := exec.Command(o.tmuxPath, "list-sessions", "-F", "#{session_name}\t#{session_windows}\t#{session_created_string}\t#{session_attached}")
 	output, err := cmd.Output()
 	if err != nil {
 		// Check if this is just "no sessions" (exit code 1)
@@ -165,11 +173,26 @@ func (o *Orchestrator) ListSessions() ([]string, error) {
 		return nil, fmt.Errorf("list sessions: %w", err)
 	}
 
-	var sessions []string
-	for _, line := range strings.Split(string(output), "\n") {
-		if strings.HasPrefix(line, "ai-") {
-			sessions = append(sessions, line)
+	var sessions []SessionInfo
+	for _, line := range strings.Split(strings.TrimSpace(string(output)), "\n") {
+		if line == "" {
+			continue
 		}
+		parts := strings.SplitN(line, "\t", 4)
+		if len(parts) < 1 || !strings.HasPrefix(parts[0], "ai-") {
+			continue
+		}
+		info := SessionInfo{Name: parts[0]}
+		if len(parts) >= 2 {
+			fmt.Sscanf(parts[1], "%d", &info.Windows)
+		}
+		if len(parts) >= 3 {
+			info.CreatedAt = parts[2]
+		}
+		if len(parts) >= 4 {
+			info.Attached = parts[3] == "1"
+		}
+		sessions = append(sessions, info)
 	}
 	return sessions, nil
 }
