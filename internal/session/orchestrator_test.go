@@ -119,6 +119,37 @@ func TestEscapeForShell(t *testing.T) {
 			input: "",
 			want:  "$''",
 		},
+		// Additional edge cases
+		{
+			name:  "multiple single quotes",
+			input: "it's Bob's",
+			want:  "$'it\\'s Bob\\'s'",
+		},
+		{
+			name:  "mixed special chars",
+			input: "key'with\\special\nchars",
+			want:  "$'key\\'with\\\\special\\nchars'",
+		},
+		{
+			name:  "unicode preserved",
+			input: "hello 世界",
+			want:  "$'hello 世界'",
+		},
+		{
+			name:  "double quote preserved",
+			input: `say "hello"`,
+			want:  `$'say "hello"'`,
+		},
+		{
+			name:  "real API key format",
+			input: "sk-ant-api03-abcdefghijklmnopqrstuvwxyz",
+			want:  "$'sk-ant-api03-abcdefghijklmnopqrstuvwxyz'",
+		},
+		{
+			name:  "null byte not expected but handled",
+			input: "before\x00after",
+			want:  "$'before\x00after'",
+		},
 	}
 
 	for _, tt := range tests {

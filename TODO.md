@@ -141,7 +141,7 @@
 
 ### P2: 代码质量
 
-#### [P2-10] pending - Shell 转义完整实现
+#### [P2-10] done - Shell 转义完整实现
 
 - **File**: `internal/session/orchestrator.go`
 - **Description**: 使用 `$'...'` 语法完整转义 API Key
@@ -151,7 +151,7 @@
 
 ---
 
-#### [P2-11] pending - tmux 嵌套检测
+#### [P2-11] done - tmux 嵌套检测
 
 - **File**: `internal/session/orchestrator.go`
 - **Description**: 检测 `$TMUX` 环境，在 tmux 内使用 `switch-client`
@@ -178,7 +178,7 @@
 | Phase   | 总计 | 完成 | 待开始 |
 | ------- | ---- | ---- | ------ |
 | Phase 1 | 8    | 8    | 0      |
-| Phase 2 | 12   | 9    | 3      |
+| Phase 2 | 12   | 11   | 1      |
 
 ---
 
@@ -201,12 +201,12 @@
 
 - [P2-8] Key Manager 分组 ✅
 - [P2-9] Key CLI 子命令 ✅
-- [P2-10] Shell 转义
-- [P2-11] tmux 嵌套检测
+- [P2-10] Shell 转义 ✅
+- [P2-11] tmux 嵌套检测 ✅
 - [P2-12] 补充测试
 
 ---
 
 ## 下一步行动
 
-**建议从 [P2-10] 开始**: Shell 转义完整实现。
+**建议从 [P2-12] 开始**: 补充测试覆盖。
