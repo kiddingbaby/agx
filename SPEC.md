@@ -45,14 +45,14 @@
 
 ### 技术栈
 
-| 组件 | 技术 | 说明 |
-|------|------|------|
-| 语言 | Go 1.22+ | 单二进制，跨平台 |
-| TUI | tview + tcell | 终端 UI 框架 |
-| 加密 | AES-GCM | API Key 加密存储 |
-| 会话 | tmux >= 3.0 | session/window 管理 |
-| 配置 | YAML | Key 存储格式 |
-| 主题 | Catppuccin Mocha | 统一配色方案 |
+| 组件 | 技术             | 说明                |
+| ---- | ---------------- | ------------------- |
+| 语言 | Go 1.22+         | 单二进制，跨平台    |
+| TUI  | tview + tcell    | 终端 UI 框架        |
+| 加密 | AES-GCM          | API Key 加密存储    |
+| 会话 | tmux >= 3.0      | session/window 管理 |
+| 配置 | YAML             | Key 存储格式        |
+| 主题 | Catppuccin Mocha | 统一配色方案        |
 
 ## 命令体系
 
@@ -110,23 +110,23 @@ type Key struct {
 
 #### 操作
 
-| 操作 | CLI 命令 | TUI 按键 |
-|------|----------|----------|
-| 添加 | `agx keys add [--provider P --name N --key K]` | `a` |
-| 编辑 | - | `e` |
-| 删除 | `agx keys delete <id>` | `d` |
-| 激活 | `agx keys activate <id>` | `Enter` |
-| 列表 | `agx keys ls [--provider P]` | 主页面 |
-| 搜索 | - | `/` |
+| 操作 | CLI 命令                                       | TUI 按键 |
+| ---- | ---------------------------------------------- | -------- |
+| 添加 | `agx keys add [--provider P --name N --key K]` | `a`      |
+| 编辑 | -                                              | `e`      |
+| 删除 | `agx keys delete <id>`                         | `d`      |
+| 激活 | `agx keys activate <id>`                       | `Enter`  |
+| 列表 | `agx keys ls [--provider P]`                   | 主页面   |
+| 搜索 | -                                              | `/`      |
 
 ### 2. Session Orchestrator
 
 #### tmux 会话设计
 
-| 层级 | 命名规则 | 说明 |
-|------|----------|------|
+| 层级    | 命名规则     | 说明                    |
+| ------- | ------------ | ----------------------- |
 | Session | `ai-<agent>` | 每个 Agent 一个 session |
-| Window | `<dir-name>` | 每个目录一个 window |
+| Window  | `<dir-name>` | 每个目录一个 window     |
 
 #### 启动流程
 
@@ -146,11 +146,11 @@ type Key struct {
 
 #### 环境变量注入
 
-| Provider | 环境变量 |
-|----------|----------|
-| OpenAI | `OPENAI_API_KEY` |
-| Claude | `ANTHROPIC_API_KEY` |
-| Gemini | `GOOGLE_API_KEY` |
+| Provider | 环境变量            |
+| -------- | ------------------- |
+| OpenAI   | `OPENAI_API_KEY`    |
+| Claude   | `ANTHROPIC_API_KEY` |
+| Gemini   | `GOOGLE_API_KEY`    |
 
 #### Shell 转义
 
