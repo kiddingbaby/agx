@@ -1,48 +1,28 @@
 package main
 
 import (
-	"flag"
 	"fmt"
 	"os"
 	"path/filepath"
+	"strings"
 
-	"github.com/gdamore/tcell/v2"
 	"github.com/kiddingbaby/agx/internal/key"
 	"github.com/kiddingbaby/agx/internal/session"
 	"github.com/kiddingbaby/agx/internal/tui"
-	"github.com/rivo/tview"
 )
 
+// Agent aliases for quick access
+var agentAliases = map[string]string{
+	"claude": "claude-code",
+	"codex":  "codex-cli",
+	"gemini": "gemini-cli",
+}
+
 func main() {
-	var (
-		agentFlag string
-		dirFlag   string
-		keyMgr    bool
-	)
-
-	flag.StringVar(&agentFlag, "agent", "", "Agent to use (claude-code, codex-cli, gemini-cli)")
-	flag.StringVar(&dirFlag, "dir", "", "Working directory")
-	flag.BoolVar(&keyMgr, "keys", false, "Open key manager")
-	flag.Parse()
-
 	// Initialize key store
-	secret := os.Getenv("AGX_SECRET")
-	if secret == "" {
-		fmt.Fprintln(os.Stderr, "Error: AGX_SECRET environment variable is required (32 bytes)")
-		fmt.Fprintln(os.Stderr, "Generate one with: openssl rand -base64 32 | head -c 32")
-		os.Exit(1)
-	}
-	if len(secret) != 32 {
-		fmt.Fprintf(os.Stderr, "Error: AGX_SECRET must be exactly 32 bytes (got %d)\n", len(secret))
-		os.Exit(1)
-	}
-
-	configDir, _ := os.UserHomeDir()
-	storePath := filepath.Join(configDir, ".config", "agx", "keys.yaml")
-
-	store, err := key.NewStore(storePath, []byte(secret[:32]))
+	store, err := initKeyStore()
 	if err != nil {
-		fmt.Fprintf(os.Stderr, "Error initializing key store: %v\n", err)
+		fmt.Fprintln(os.Stderr, err)
 		os.Exit(1)
 	}
 
@@ -53,117 +33,268 @@ func main() {
 		os.Exit(1)
 	}
 
-	// Create TUI application
-	app := tview.NewApplication()
-
-	// Apply theme to app (sets background color)
-	tui.CurrentTheme.ApplyToApp(app)
-
-	// Pages for navigation
-	pages := tview.NewPages()
-
-	var selectedAgent tui.Agent
-	var selectedDir string
-
-	// Create components
-	launcher := tui.NewLauncher()
-	dirPicker := tui.NewDirPicker("")
-	keyManager := tui.NewKeyManager(store, app)
-
-	// Status bar
-	status := tview.NewTextView().
-		SetDynamicColors(true).
-		SetText(" [#f9e2af]AGX[#cdd6f4] | [#a6e3a1]↑↓/jk[#cdd6f4] Navigate | [#a6e3a1]Enter[#cdd6f4] Select | [#a6e3a1]Esc[#cdd6f4] Back | [#a6e3a1]K[#cdd6f4] Keys | [#a6e3a1]q[#cdd6f4] Quit")
-	tui.CurrentTheme.ApplyToTextView(status)
-
-	// Main layout
-	mainLayout := tview.NewFlex().SetDirection(tview.FlexRow).
-		AddItem(pages, 0, 1, true).
-		AddItem(status, 1, 0, false)
-
-	// Setup launcher
-	launcher.SetOnSelect(func(agent tui.Agent) {
-		selectedAgent = agent
-		pages.SwitchToPage("dirpicker")
-		app.SetFocus(dirPicker)
-	})
-	launcher.SetOnCancel(func() {
-		app.Stop()
-	})
-
-	// Setup directory picker
-	dirPicker.SetOnSelect(func(dir string) {
-		selectedDir = dir
-		launchSession(app, orch, store, selectedAgent, selectedDir)
-	})
-	dirPicker.SetOnCancel(func() {
-		pages.SwitchToPage("launcher")
-		app.SetFocus(launcher)
-	})
-
-	// Setup key manager
-	keyManager.SetOnClose(func() {
-		pages.SwitchToPage("launcher")
-		app.SetFocus(launcher)
-	})
-
-	// Add pages
-	pages.AddPage("launcher", launcher, true, true)
-	pages.AddPage("dirpicker", dirPicker, true, false)
-	pages.AddPage("keymgr", keyManager, true, false)
-
-	// Global key handler
-	app.SetInputCapture(func(event *tcell.EventKey) *tcell.EventKey {
-		if event.Key() == tcell.KeyRune && (event.Rune() == 'K' || event.Rune() == 'M') {
-			pages.SwitchToPage("keymgr")
-			app.SetFocus(keyManager)
-			return nil
-		}
-		return event
-	})
-
-	// Handle command line flags
-	if keyMgr {
-		pages.SwitchToPage("keymgr")
-		app.SetFocus(keyManager)
+	// Parse command
+	args := os.Args[1:]
+	if len(args) == 0 {
+		// agx → TUI Dashboard (placeholder: launches launcher for now)
+		runTUI(store, orch)
+		return
 	}
 
-	if err := app.SetRoot(mainLayout, true).EnableMouse(false).Run(); err != nil {
+	cmd := args[0]
+	switch cmd {
+	case "keys":
+		handleKeys(store, args[1:])
+	case "ls":
+		handleList(orch)
+	case "attach", "a":
+		if len(args) < 2 {
+			fmt.Fprintln(os.Stderr, "Usage: agx attach <session-name>")
+			os.Exit(1)
+		}
+		handleAttach(orch, args[1])
+	case "kill":
+		if len(args) < 2 {
+			fmt.Fprintln(os.Stderr, "Usage: agx kill <session-name>")
+			os.Exit(1)
+		}
+		handleKill(orch, args[1])
+	case "help", "-h", "--help":
+		printHelp()
+	default:
+		// Assume it's an agent name with optional args
+		handleLaunch(store, orch, cmd, args[1:])
+	}
+}
+
+func initKeyStore() (*key.Store, error) {
+	secret := os.Getenv("AGX_SECRET")
+	if secret == "" {
+		return nil, fmt.Errorf("Error: AGX_SECRET environment variable is required (32 bytes)\nGenerate one with: openssl rand -base64 32 | head -c 32")
+	}
+	if len(secret) != 32 {
+		return nil, fmt.Errorf("Error: AGX_SECRET must be exactly 32 bytes (got %d)", len(secret))
+	}
+
+	configDir, err := os.UserHomeDir()
+	if err != nil {
+		return nil, fmt.Errorf("cannot determine home directory: %w", err)
+	}
+	storePath := filepath.Join(configDir, ".config", "agx", "keys.yaml")
+
+	return key.NewStore(storePath, []byte(secret[:32]))
+}
+
+// handleKeys handles `agx keys [sub]` commands
+func handleKeys(store *key.Store, args []string) {
+	if len(args) == 0 {
+		// agx keys → TUI Key Manager
+		runKeyManagerTUI(store)
+		return
+	}
+
+	switch args[0] {
+	case "ls":
+		handleKeysLs(store)
+	default:
+		fmt.Fprintf(os.Stderr, "Unknown keys subcommand: %s\n", args[0])
+		fmt.Fprintln(os.Stderr, "Usage: agx keys [ls]")
+		os.Exit(1)
+	}
+}
+
+// handleKeysLs lists all keys
+func handleKeysLs(store *key.Store) {
+	keys := store.List()
+	if len(keys) == 0 {
+		fmt.Println("No keys configured. Use TUI (agx keys) to add keys.")
+		return
+	}
+
+	fmt.Println("Keys:")
+	for _, k := range keys {
+		active := " "
+		if k.Active {
+			active = "*"
+		}
+		fmt.Printf("  %s [%s] %s (%s)\n", active, k.Provider, k.Name, k.ID[:8])
+	}
+}
+
+// handleList handles `agx ls` command
+func handleList(orch *session.Orchestrator) {
+	sessions, err := orch.ListSessions()
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "Error: %v\n", err)
+		os.Exit(1)
+	}
+
+	if len(sessions) == 0 {
+		fmt.Println("No active AI sessions.")
+		return
+	}
+
+	fmt.Println("Active AI sessions:")
+	for _, s := range sessions {
+		fmt.Printf("  %s\n", s)
+	}
+}
+
+// handleAttach handles `agx attach <name>` command
+func handleAttach(orch *session.Orchestrator, name string) {
+	sessionName := normalizeSessionName(name)
+	if err := orch.Attach(sessionName); err != nil {
 		fmt.Fprintf(os.Stderr, "Error: %v\n", err)
 		os.Exit(1)
 	}
 }
 
-func launchSession(app *tview.Application, orch *session.Orchestrator, store *key.Store, agent tui.Agent, dir string) {
-	// Get active key for the agent's provider
-	activeKey, err := store.GetActive(key.Provider(agent.Provider))
-	if err != nil {
-		// Show error modal
-		modal := tview.NewModal().
-			SetText(fmt.Sprintf("No active key for %s.\nPlease add and activate a key first.", agent.Provider)).
-			AddButtons([]string{"OK"}).
-			SetDoneFunc(func(buttonIndex int, buttonLabel string) {
-				app.Stop()
-			})
-		app.SetRoot(modal, true)
-		return
+// handleKill handles `agx kill <name>` command
+func handleKill(orch *session.Orchestrator, name string) {
+	sessionName := normalizeSessionName(name)
+	if err := orch.KillSession(sessionName); err != nil {
+		fmt.Fprintf(os.Stderr, "Error: %v\n", err)
+		os.Exit(1)
+	}
+	fmt.Printf("Killed session: %s\n", sessionName)
+}
+
+// handleLaunch handles `agx <agent> [args...]` command
+func handleLaunch(store *key.Store, orch *session.Orchestrator, agentName string, args []string) {
+	// Resolve alias
+	if resolved, ok := agentAliases[agentName]; ok {
+		agentName = resolved
 	}
 
-	// Stop TUI before launching tmux
-	app.Stop()
+	// Find agent
+	agent, ok := findAgent(agentName)
+	if !ok {
+		fmt.Fprintf(os.Stderr, "Unknown agent: %s\n", agentName)
+		fmt.Fprintln(os.Stderr, "Available agents: claude-code (claude), codex-cli (codex), gemini-cli (gemini)")
+		os.Exit(1)
+	}
+
+	// Get active key
+	activeKey, err := store.GetActive(key.Provider(agent.Provider))
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "Error: No active key for %s\n", agent.Provider)
+		fmt.Fprintln(os.Stderr, "Use 'agx keys' to add and activate a key.")
+		os.Exit(1)
+	}
+
+	// Get current directory
+	dir, err := os.Getwd()
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "Error: %v\n", err)
+		os.Exit(1)
+	}
+
+	// Build command with args
+	command := agent.Command
+	if len(args) > 0 {
+		command = command + " " + joinArgs(args)
+	}
 
 	// Launch session
 	cfg := session.SessionConfig{
 		Agent:   agent.Name,
 		Dir:     dir,
-		Command: agent.Command,
+		Command: command,
 		EnvVars: map[string]string{
 			agent.EnvVar: activeKey.APIKey,
 		},
 	}
 
 	if err := orch.Launch(cfg); err != nil {
-		fmt.Fprintf(os.Stderr, "Error launching session: %v\n", err)
+		fmt.Fprintf(os.Stderr, "Error: %v\n", err)
 		os.Exit(1)
 	}
+}
+
+// findAgent finds an agent by name
+func findAgent(name string) (tui.Agent, bool) {
+	for _, a := range tui.DefaultAgents() {
+		if a.Name == name {
+			return a, true
+		}
+	}
+	return tui.Agent{}, false
+}
+
+// normalizeSessionName adds "ai-" prefix if not present
+func normalizeSessionName(name string) string {
+	if strings.HasPrefix(name, "ai-") {
+		return name
+	}
+	return "ai-" + name
+}
+
+// joinArgs joins args with proper shell escaping using $'...' syntax
+func joinArgs(args []string) string {
+	var parts []string
+	for _, arg := range args {
+		parts = append(parts, escapeArg(arg))
+	}
+	return strings.Join(parts, " ")
+}
+
+// escapeArg uses $'...' syntax for complete escaping
+func escapeArg(value string) string {
+	// If no special chars, return as-is
+	needsEscape := false
+	for _, r := range value {
+		switch r {
+		case '\'', '\\', '"', '$', '`', '\n', '\r', '\t', ' ', '!', '*', '?', '[', ']', '(', ')', '{', '}', '|', '&', ';', '<', '>':
+			needsEscape = true
+		}
+	}
+	if !needsEscape {
+		return value
+	}
+
+	var b strings.Builder
+	b.WriteString("$'")
+	for _, r := range value {
+		switch r {
+		case '\'':
+			b.WriteString("\\'")
+		case '\\':
+			b.WriteString("\\\\")
+		case '\n':
+			b.WriteString("\\n")
+		case '\r':
+			b.WriteString("\\r")
+		case '\t':
+			b.WriteString("\\t")
+		default:
+			b.WriteRune(r)
+		}
+	}
+	b.WriteString("'")
+	return b.String()
+}
+
+func printHelp() {
+	fmt.Println(`AGX - AI CLI Session Orchestrator
+
+Usage:
+  agx                     Open Session Dashboard (TUI)
+  agx <agent> [args...]   Launch agent in current directory
+  agx keys                Open Key Manager (TUI)
+  agx keys ls             List all keys
+  agx ls                  List active AI sessions
+  agx attach <name>       Attach to session (alias: a)
+  agx kill <name>         Kill a session
+
+Agents:
+  claude-code (claude)    Claude Code CLI
+  codex-cli (codex)       OpenAI Codex CLI
+  gemini-cli (gemini)     Google Gemini CLI
+
+Examples:
+  agx claude              Launch claude-code in current directory
+  agx claude -c           Launch with -c flag passed through
+  agx ls                  List all AI sessions
+  agx attach claude       Attach to ai-claude session
+  agx kill claude         Kill ai-claude session`)
 }

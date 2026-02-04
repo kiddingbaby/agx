@@ -31,7 +31,7 @@
 
 ### P0: 核心功能
 
-#### [P2-1] pending - 重构命令解析
+#### [P2-1] done - 重构命令解析
 
 - **File**: `cmd/agx/main.go`
 - **Description**: 重写 main.go，实现新的命令解析逻辑
@@ -43,7 +43,7 @@
 
 ---
 
-#### [P2-2] pending - 实现参数透传
+#### [P2-2] done - 实现参数透传
 
 - **File**: `internal/session/orchestrator.go`
 - **Description**: 支持 `agx claude -c` 将 `-c` 透传给 claude CLI
@@ -54,7 +54,7 @@
 
 ---
 
-#### [P2-3] pending - 默认当前目录启动
+#### [P2-3] done - 默认当前目录启动
 
 - **File**: `cmd/agx/main.go`, `internal/session/orchestrator.go`
 - **Description**: `agx claude` 默认使用 `cwd`，无需选择目录
@@ -67,7 +67,7 @@
 
 ### P1: 会话管理
 
-#### [P2-4] pending - 实现 `agx ls` 命令
+#### [P2-4] done - 实现 `agx ls` 命令
 
 - **File**: `cmd/agx/main.go`
 - **Description**: CLI 列出所有 AI 会话
@@ -77,7 +77,7 @@
 
 ---
 
-#### [P2-5] pending - 实现 `agx attach` 命令
+#### [P2-5] done - 实现 `agx attach` 命令
 
 - **File**: `cmd/agx/main.go`
 - **Description**: CLI 切换到指定会话
@@ -88,7 +88,7 @@
 
 ---
 
-#### [P2-6] pending - 实现 `agx kill` 命令
+#### [P2-6] done - 实现 `agx kill` 命令
 
 - **File**: `cmd/agx/main.go`, `internal/session/orchestrator.go`
 - **Description**: CLI 终止指定会话
@@ -178,7 +178,7 @@
 | Phase   | 总计 | 完成 | 待开始 |
 | ------- | ---- | ---- | ------ |
 | Phase 1 | 8    | 8    | 0      |
-| Phase 2 | 12   | 0    | 12     |
+| Phase 2 | 12   | 6    | 6      |
 
 ---
 
@@ -186,15 +186,15 @@
 
 ### P0 (必须)
 
-- [P2-1] 重构命令解析
-- [P2-2] 参数透传
-- [P2-3] 默认当前目录
+- [P2-1] 重构命令解析 ✅
+- [P2-2] 参数透传 ✅
+- [P2-3] 默认当前目录 ✅
 
 ### P1 (重要)
 
-- [P2-4] `agx ls`
-- [P2-5] `agx attach`
-- [P2-6] `agx kill`
+- [P2-4] `agx ls` ✅
+- [P2-5] `agx attach` ✅
+- [P2-6] `agx kill` ✅
 - [P2-7] Session Dashboard
 
 ### P2 (改进)
@@ -209,4 +209,4 @@
 
 ## 下一步行动
 
-**建议从 [P2-1] 开始**: 重构命令解析是所有新功能的基础。
+**建议从 [P2-7] 开始**: 实现 Session Dashboard TUI。

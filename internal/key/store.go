@@ -111,6 +111,11 @@ func (s *Store) Activate(id string) error {
 	return s.save()
 }
 
+// List returns all keys (without decrypting API keys)
+func (s *Store) List() []Key {
+	return s.Keys
+}
+
 // GetActive returns the active key for a provider
 func (s *Store) GetActive(provider Provider) (*Key, error) {
 	for _, k := range s.Keys {

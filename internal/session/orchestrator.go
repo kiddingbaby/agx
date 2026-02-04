@@ -118,7 +118,7 @@ func (o *Orchestrator) Launch(cfg SessionConfig) error {
 	}
 
 	// Attach to session
-	return o.attach(sessionName)
+	return o.Attach(sessionName)
 }
 
 func (o *Orchestrator) hasSession(name string) bool {
@@ -133,7 +133,8 @@ func (o *Orchestrator) run(args ...string) error {
 	return cmd.Run()
 }
 
-func (o *Orchestrator) attach(sessionName string) error {
+// Attach attaches to an existing session
+func (o *Orchestrator) Attach(sessionName string) error {
 	// Check if already inside tmux
 	if os.Getenv("TMUX") != "" {
 		// Use switch-client instead of attach
