@@ -21,14 +21,14 @@
 
 ---
 
-### [2] pending - 实现 CLI Launcher TUI
+### [2] done - 实现 CLI Launcher TUI
 
 - **File**: `internal/tui/launcher.go`
 - **Description**: 实现 Agent 选择界面，支持 claude-code/codex-cli/gemini-cli 三种 AI CLI 工具的选择，使用 tview List 组件
 - **Dependencies**: []
 - **Created**: 2026-02-04 00:45:00
-- **Updated**: 2026-02-04 00:45:00
-- **Status**: ⏳ 待开始
+- **Updated**: 2026-02-04 14:54:00
+- **Status**: ✅ 已完成
 
 **实现要点**:
 
@@ -40,14 +40,14 @@
 
 ---
 
-### [3] pending - 实现 Directory Picker TUI
+### [3] done - 实现 Directory Picker TUI
 
 - **File**: `internal/tui/dirpicker.go`
 - **Description**: 实现目录树选择器，支持 Vim 键位导航 (hjkl)，显示目录树结构
 - **Dependencies**: [2]
 - **Created**: 2026-02-04 00:45:00
-- **Updated**: 2026-02-04 00:45:00
-- **Status**: ⏳ 待开始
+- **Updated**: 2026-02-04 14:54:00
+- **Status**: ✅ 已完成
 
 **实现要点**:
 
@@ -59,14 +59,14 @@
 
 ---
 
-### [4] pending - 实现 Key Manager TUI
+### [4] done - 实现 Key Manager TUI
 
 - **File**: `internal/tui/keymgr.go`
 - **Description**: 实现 Key 管理界面，支持 Add/Edit/Delete/Activate/List 操作
 - **Dependencies**: []
 - **Created**: 2026-02-04 00:45:00
-- **Updated**: 2026-02-04 00:45:00
-- **Status**: ⏳ 待开始
+- **Updated**: 2026-02-04 14:54:00
+- **Status**: ✅ 已完成
 
 **实现要点**:
 
@@ -78,14 +78,14 @@
 
 ---
 
-### [5] pending - 实现 Session Orchestrator
+### [5] done - 实现 Session Orchestrator
 
 - **File**: `internal/session/orchestrator.go`
 - **Description**: 实现 tmux 会话管理，支持 session/window 创建、环境变量注入、attach 操作
 - **Dependencies**: [2, 3, 4]
 - **Created**: 2026-02-04 00:45:00
-- **Updated**: 2026-02-04 00:45:00
-- **Status**: ⏳ 待开始
+- **Updated**: 2026-02-04 14:54:00
+- **Status**: ✅ 已完成
 
 **实现要点**:
 
@@ -98,14 +98,14 @@
 
 ---
 
-### [6] pending - 实现主程序入口
+### [6] done - 实现主程序入口
 
 - **File**: `cmd/agx/main.go`
 - **Description**: 实现主程序入口，整合所有模块，支持命令行参数
 - **Dependencies**: [2, 3, 4, 5]
 - **Created**: 2026-02-04 00:45:00
-- **Updated**: 2026-02-04 00:45:00
-- **Status**: ⏳ 待开始
+- **Updated**: 2026-02-04 14:54:00
+- **Status**: ✅ 已完成
 
 **实现要点**:
 
@@ -117,14 +117,14 @@
 
 ---
 
-### [7] pending - 添加单元测试
+### [7] done - 添加单元测试
 
 - **File**: `internal/*/\*_test.go`
 - **Description**: 为所有模块添加单元测试，覆盖率 > 80%
 - **Dependencies**: [2, 3, 4, 5, 6]
 - **Created**: 2026-02-04 00:45:00
-- **Updated**: 2026-02-04 00:45:00
-- **Status**: ⏳ 待开始
+- **Updated**: 2026-02-04 14:54:00
+- **Status**: ✅ 已完成
 
 **测试范围**:
 
@@ -194,9 +194,9 @@
 ## 任务统计
 
 - **总任务数**: 11
-- **已完成**: 1
+- **已完成**: 7
 - **进行中**: 0
-- **待开始**: 10
+- **待开始**: 4
 
 ---
 
