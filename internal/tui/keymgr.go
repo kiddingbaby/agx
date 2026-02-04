@@ -157,7 +157,7 @@ func (km *KeyManager) showAddForm() {
 
 func (km *KeyManager) deleteSelected() {
 	row, _ := km.table.GetSelection()
-	if row <= 0 || row > len(km.store.Keys) {
+	if row <= 0 || row > len(km.store.Keys) || len(km.store.Keys) == 0 {
 		return
 	}
 	k := km.store.Keys[row-1]
@@ -167,7 +167,7 @@ func (km *KeyManager) deleteSelected() {
 
 func (km *KeyManager) activateSelected() {
 	row, _ := km.table.GetSelection()
-	if row <= 0 || row > len(km.store.Keys) {
+	if row <= 0 || row > len(km.store.Keys) || len(km.store.Keys) == 0 {
 		return
 	}
 	k := km.store.Keys[row-1]

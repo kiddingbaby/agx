@@ -28,10 +28,13 @@ func main() {
 	// Initialize key store
 	secret := os.Getenv("AGX_SECRET")
 	if secret == "" {
-		secret = "agx-default-secret-key-32bytes!" // Default for development
+		fmt.Fprintln(os.Stderr, "Error: AGX_SECRET environment variable is required (32 bytes)")
+		fmt.Fprintln(os.Stderr, "Generate one with: openssl rand -base64 32 | head -c 32")
+		os.Exit(1)
 	}
-	if len(secret) < 32 {
-		secret = secret + "00000000000000000000000000000000"[:32-len(secret)]
+	if len(secret) != 32 {
+		fmt.Fprintf(os.Stderr, "Error: AGX_SECRET must be exactly 32 bytes (got %d)\n", len(secret))
+		os.Exit(1)
 	}
 
 	configDir, _ := os.UserHomeDir()

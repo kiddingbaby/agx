@@ -36,10 +36,12 @@ func (o *Orchestrator) Launch(cfg SessionConfig) error {
 	sessionName := fmt.Sprintf("ai-%s", cfg.Agent)
 	windowName := filepath.Base(cfg.Dir)
 
-	// Build environment export string
+	// Build environment export string with proper escaping
 	var envExports []string
 	for k, v := range cfg.EnvVars {
-		envExports = append(envExports, fmt.Sprintf("export %s='%s'", k, v))
+		// Escape single quotes in value to prevent shell injection
+		escaped := strings.ReplaceAll(v, "'", "'\"'\"'")
+		envExports = append(envExports, fmt.Sprintf("export %s='%s'", k, escaped))
 	}
 	envStr := strings.Join(envExports, " && ")
 
