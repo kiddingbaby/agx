@@ -127,7 +127,7 @@
 
 ---
 
-#### [P2-9] pending - Key Manager CLI 子命令
+#### [P2-9] done - Key Manager CLI 子命令
 
 - **File**: `cmd/agx/main.go`
 - **Description**: 支持 `agx keys ls/add/activate/delete` CLI 命令
@@ -178,7 +178,7 @@
 | Phase   | 总计 | 完成 | 待开始 |
 | ------- | ---- | ---- | ------ |
 | Phase 1 | 8    | 8    | 0      |
-| Phase 2 | 12   | 8    | 4      |
+| Phase 2 | 12   | 9    | 3      |
 
 ---
 
@@ -200,7 +200,7 @@
 ### P2 (改进)
 
 - [P2-8] Key Manager 分组 ✅
-- [P2-9] Key CLI 子命令
+- [P2-9] Key CLI 子命令 ✅
 - [P2-10] Shell 转义
 - [P2-11] tmux 嵌套检测
 - [P2-12] 补充测试
@@ -209,4 +209,4 @@
 
 ## 下一步行动
 
-**建议从 [P2-9] 开始**: Key Manager CLI 子命令。
+**建议从 [P2-10] 开始**: Shell 转义完整实现。

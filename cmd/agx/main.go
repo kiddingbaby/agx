@@ -95,30 +95,199 @@ func handleKeys(store *key.Store, args []string) {
 
 	switch args[0] {
 	case "ls":
-		handleKeysLs(store)
+		handleKeysLs(store, args[1:])
+	case "add":
+		handleKeysAdd(store, args[1:])
+	case "activate":
+		handleKeysActivate(store, args[1:])
+	case "delete", "rm":
+		handleKeysDelete(store, args[1:])
 	default:
 		fmt.Fprintf(os.Stderr, "Unknown keys subcommand: %s\n", args[0])
-		fmt.Fprintln(os.Stderr, "Usage: agx keys [ls]")
+		printKeysUsage()
 		os.Exit(1)
 	}
 }
 
+func printKeysUsage() {
+	fmt.Fprintln(os.Stderr, `Usage: agx keys [command]
+
+Commands:
+  ls [--provider P]              List all keys
+  add --provider P --name N --key K [--tags T]  Add a new key
+  activate <id|name>             Activate a key
+  delete <id|name>               Delete a key
+
+Without command: Open TUI Key Manager`)
+}
+
 // handleKeysLs lists all keys
-func handleKeysLs(store *key.Store) {
+func handleKeysLs(store *key.Store, args []string) {
+	var providerFilter string
+	for i := 0; i < len(args); i++ {
+		if args[i] == "--provider" || args[i] == "-p" {
+			if i+1 < len(args) {
+				providerFilter = args[i+1]
+				i++
+			}
+		}
+	}
+
 	keys := store.List()
 	if len(keys) == 0 {
-		fmt.Println("No keys configured. Use TUI (agx keys) to add keys.")
+		fmt.Println("No keys configured. Use 'agx keys add' or TUI (agx keys) to add keys.")
 		return
 	}
 
-	fmt.Println("Keys:")
-	for _, k := range keys {
-		active := " "
-		if k.Active {
-			active = "*"
+	// Group by provider
+	providers := []key.Provider{key.ProviderClaude, key.ProviderOpenAI, key.ProviderGemini}
+	for _, provider := range providers {
+		if providerFilter != "" && string(provider) != providerFilter {
+			continue
 		}
-		fmt.Printf("  %s [%s] %s (%s)\n", active, k.Provider, k.Name, k.ID[:8])
+
+		fmt.Printf("\n%s:\n", strings.ToUpper(string(provider)))
+		hasKeys := false
+		for _, k := range keys {
+			if k.Provider == provider {
+				hasKeys = true
+				active := " "
+				if k.Active {
+					active = "*"
+				}
+				fmt.Printf("  %s %s  (%s)\n", active, k.Name, k.ID[:8])
+			}
+		}
+		if !hasKeys {
+			fmt.Println("  (no keys)")
+		}
 	}
+	fmt.Println()
+}
+
+// handleKeysAdd adds a new key
+func handleKeysAdd(store *key.Store, args []string) {
+	var provider, name, apiKey, tagsStr string
+
+	for i := 0; i < len(args); i++ {
+		switch args[i] {
+		case "--provider", "-p":
+			if i+1 < len(args) {
+				provider = args[i+1]
+				i++
+			}
+		case "--name", "-n":
+			if i+1 < len(args) {
+				name = args[i+1]
+				i++
+			}
+		case "--key", "-k":
+			if i+1 < len(args) {
+				apiKey = args[i+1]
+				i++
+			}
+		case "--tags", "-t":
+			if i+1 < len(args) {
+				tagsStr = args[i+1]
+				i++
+			}
+		}
+	}
+
+	if provider == "" || name == "" || apiKey == "" {
+		fmt.Fprintln(os.Stderr, "Error: --provider, --name, and --key are required")
+		fmt.Fprintln(os.Stderr, "Usage: agx keys add --provider P --name N --key K [--tags T]")
+		os.Exit(1)
+	}
+
+	// Validate provider
+	validProviders := map[string]bool{"claude": true, "openai": true, "gemini": true}
+	if !validProviders[provider] {
+		fmt.Fprintf(os.Stderr, "Error: invalid provider '%s'. Valid: claude, openai, gemini\n", provider)
+		os.Exit(1)
+	}
+
+	// Parse tags
+	var tags []string
+	if tagsStr != "" {
+		for _, t := range strings.Split(tagsStr, ",") {
+			t = strings.TrimSpace(t)
+			if t != "" {
+				tags = append(tags, t)
+			}
+		}
+	}
+
+	k, err := store.Add(key.Provider(provider), name, apiKey, tags)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "Error: %v\n", err)
+		os.Exit(1)
+	}
+
+	fmt.Printf("Added key: %s (%s)\n", k.Name, k.ID[:8])
+}
+
+// handleKeysActivate activates a key
+func handleKeysActivate(store *key.Store, args []string) {
+	if len(args) == 0 {
+		fmt.Fprintln(os.Stderr, "Error: key ID or name required")
+		fmt.Fprintln(os.Stderr, "Usage: agx keys activate <id|name>")
+		os.Exit(1)
+	}
+
+	identifier := args[0]
+	k := findKeyByIdOrName(store, identifier)
+	if k == nil {
+		fmt.Fprintf(os.Stderr, "Error: key not found: %s\n", identifier)
+		os.Exit(1)
+	}
+
+	if err := store.Activate(k.ID); err != nil {
+		fmt.Fprintf(os.Stderr, "Error: %v\n", err)
+		os.Exit(1)
+	}
+
+	fmt.Printf("Activated key: %s [%s]\n", k.Name, k.Provider)
+}
+
+// handleKeysDelete deletes a key
+func handleKeysDelete(store *key.Store, args []string) {
+	if len(args) == 0 {
+		fmt.Fprintln(os.Stderr, "Error: key ID or name required")
+		fmt.Fprintln(os.Stderr, "Usage: agx keys delete <id|name>")
+		os.Exit(1)
+	}
+
+	identifier := args[0]
+	k := findKeyByIdOrName(store, identifier)
+	if k == nil {
+		fmt.Fprintf(os.Stderr, "Error: key not found: %s\n", identifier)
+		os.Exit(1)
+	}
+
+	if err := store.Delete(k.ID); err != nil {
+		fmt.Fprintf(os.Stderr, "Error: %v\n", err)
+		os.Exit(1)
+	}
+
+	fmt.Printf("Deleted key: %s\n", k.Name)
+}
+
+// findKeyByIdOrName finds a key by ID (partial match) or name
+func findKeyByIdOrName(store *key.Store, identifier string) *key.Key {
+	keys := store.List()
+	for i := range keys {
+		k := &keys[i]
+		// Match by ID prefix
+		if strings.HasPrefix(k.ID, identifier) {
+			return k
+		}
+		// Match by name (exact)
+		if k.Name == identifier {
+			return k
+		}
+	}
+	return nil
 }
 
 // handleList handles `agx ls` command
@@ -285,10 +454,15 @@ Usage:
   agx                     Open Session Dashboard (TUI)
   agx <agent> [args...]   Launch agent in current directory
   agx keys                Open Key Manager (TUI)
-  agx keys ls             List all keys
   agx ls                  List active AI sessions
   agx attach <name>       Attach to session (alias: a)
   agx kill <name>         Kill a session
+
+Key Management:
+  agx keys ls [--provider P]              List all keys
+  agx keys add --provider P --name N --key K [--tags T]
+  agx keys activate <id|name>             Activate a key
+  agx keys delete <id|name>               Delete a key
 
 Agents:
   claude-code (claude)    Claude Code CLI
@@ -298,7 +472,6 @@ Agents:
 Examples:
   agx claude              Launch claude-code in current directory
   agx claude -c           Launch with -c flag passed through
-  agx ls                  List all AI sessions
-  agx attach claude       Attach to ai-claude session
-  agx kill claude         Kill ai-claude session`)
+  agx keys add --provider claude --name mykey --key sk-xxx
+  agx keys activate mykey`)
 }
