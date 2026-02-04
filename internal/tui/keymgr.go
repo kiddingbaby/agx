@@ -11,12 +11,13 @@ import (
 // KeyManager is the key management UI component
 type KeyManager struct {
 	*tview.Flex
-	store    *key.Store
-	table    *tview.Table
-	form     *tview.Form
-	pages    *tview.Pages
-	onClose  func()
-	app      *tview.Application
+	store      *key.Store
+	table      *tview.Table
+	form       *tview.Form
+	pages      *tview.Pages
+	onClose    func()
+	app        *tview.Application
+	keyIndexes []int // maps table row to store.Keys index (-1 for non-key rows)
 }
 
 // Focus delegates focus to the internal table (fixes focus issue)
@@ -86,39 +87,109 @@ func NewKeyManager(store *key.Store, app *tview.Application) *KeyManager {
 
 func (km *KeyManager) refreshTable() {
 	km.table.Clear()
+	km.keyIndexes = nil
 
-	// Empty state hint
-	if len(km.store.Keys) == 0 {
-		km.table.SetCell(0, 0, tview.NewTableCell("No keys configured").
-			SetTextColor(CurrentTheme.FgMuted).
-			SetSelectable(false))
-		km.table.SetCell(1, 0, tview.NewTableCell("Press [a] to add a key").
-			SetTextColor(CurrentTheme.FgMuted).
-			SetSelectable(false))
-		return
+	// Group keys by provider
+	providers := []key.Provider{key.ProviderClaude, key.ProviderOpenAI, key.ProviderGemini}
+	providerNames := map[key.Provider]string{
+		key.ProviderClaude: "CLAUDE",
+		key.ProviderOpenAI: "OPENAI",
+		key.ProviderGemini: "GEMINI",
 	}
 
-	headers := []string{"", "Provider", "Name", "Tags", "Created"}
-	for i, h := range headers {
-		km.table.SetCell(0, i, tview.NewTableCell(h).
+	row := 0
+	firstSelectableRow := -1
+
+	for _, provider := range providers {
+		// Provider header
+		km.table.SetCell(row, 0, tview.NewTableCell(providerNames[provider]).
 			SetTextColor(CurrentTheme.Warning).
+			SetSelectable(false).
+			SetExpansion(1))
+		km.keyIndexes = append(km.keyIndexes, -1) // header row
+		row++
+
+		// Separator line
+		km.table.SetCell(row, 0, tview.NewTableCell("────────────────────────────────────────────────").
+			SetTextColor(CurrentTheme.FgMuted).
 			SetSelectable(false))
-	}
+		km.keyIndexes = append(km.keyIndexes, -1) // separator row
+		row++
 
-	for i, k := range km.store.Keys {
-		active := " "
-		if k.Active {
-			active = "*"
+		// Find keys for this provider
+		hasKeys := false
+		for i, k := range km.store.Keys {
+			if k.Provider == provider {
+				hasKeys = true
+				active := "  "
+				if k.Active {
+					active = "* "
+				}
+
+				// Format tags
+				tagsStr := "-"
+				if len(k.Tags) > 0 {
+					tagsStr = fmt.Sprintf("%v", k.Tags)
+					if len(tagsStr) > 2 {
+						tagsStr = tagsStr[1 : len(tagsStr)-1] // remove brackets
+					}
+				}
+
+				// Build row: active marker + name + tags + date
+				cellText := fmt.Sprintf("%s%-20s  %-20s  %s",
+					active,
+					truncate(k.Name, 20),
+					truncate(tagsStr, 20),
+					k.CreatedAt.Format("2006-01-02"))
+
+				color := CurrentTheme.FgPrimary
+				if k.Active {
+					color = CurrentTheme.Success
+				}
+
+				km.table.SetCell(row, 0, tview.NewTableCell(cellText).
+					SetTextColor(color).
+					SetSelectable(true))
+				km.keyIndexes = append(km.keyIndexes, i)
+
+				if firstSelectableRow < 0 {
+					firstSelectableRow = row
+				}
+				row++
+			}
 		}
-		km.table.SetCell(i+1, 0, tview.NewTableCell(active).SetTextColor(CurrentTheme.Success))
-		km.table.SetCell(i+1, 1, tview.NewTableCell(string(k.Provider)))
-		km.table.SetCell(i+1, 2, tview.NewTableCell(k.Name))
-		km.table.SetCell(i+1, 3, tview.NewTableCell(fmt.Sprintf("%v", k.Tags)))
-		km.table.SetCell(i+1, 4, tview.NewTableCell(k.CreatedAt.Format("2006-01-02")))
+
+		// Empty provider hint
+		if !hasKeys {
+			km.table.SetCell(row, 0, tview.NewTableCell("  (no keys - press 'a' to add)").
+				SetTextColor(CurrentTheme.FgMuted).
+				SetSelectable(false))
+			km.keyIndexes = append(km.keyIndexes, -1)
+			row++
+		}
+
+		// Blank line between providers
+		km.table.SetCell(row, 0, tview.NewTableCell("").
+			SetSelectable(false))
+		km.keyIndexes = append(km.keyIndexes, -1)
+		row++
 	}
 
-	// Select first data row
-	km.table.Select(1, 0)
+	// Select first selectable row
+	if firstSelectableRow >= 0 {
+		km.table.Select(firstSelectableRow, 0)
+	}
+}
+
+// truncate truncates a string to max length with ellipsis
+func truncate(s string, max int) string {
+	if len(s) <= max {
+		return s
+	}
+	if max <= 3 {
+		return s[:max]
+	}
+	return s[:max-3] + "..."
 }
 
 func (km *KeyManager) showAddForm() {
@@ -181,20 +252,28 @@ func (km *KeyManager) showAddForm() {
 
 func (km *KeyManager) deleteSelected() {
 	row, _ := km.table.GetSelection()
-	if row <= 0 || row > len(km.store.Keys) || len(km.store.Keys) == 0 {
+	if row < 0 || row >= len(km.keyIndexes) {
 		return
 	}
-	k := km.store.Keys[row-1]
+	keyIdx := km.keyIndexes[row]
+	if keyIdx < 0 || keyIdx >= len(km.store.Keys) {
+		return
+	}
+	k := km.store.Keys[keyIdx]
 	km.store.Delete(k.ID)
 	km.refreshTable()
 }
 
 func (km *KeyManager) activateSelected() {
 	row, _ := km.table.GetSelection()
-	if row <= 0 || row > len(km.store.Keys) || len(km.store.Keys) == 0 {
+	if row < 0 || row >= len(km.keyIndexes) {
 		return
 	}
-	k := km.store.Keys[row-1]
+	keyIdx := km.keyIndexes[row]
+	if keyIdx < 0 || keyIdx >= len(km.store.Keys) {
+		return
+	}
+	k := km.store.Keys[keyIdx]
 	km.store.Activate(k.ID)
 	km.refreshTable()
 }

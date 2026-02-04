@@ -116,7 +116,7 @@
 
 ### P2: Key 管理改进
 
-#### [P2-8] pending - Key Manager 按 Provider 分组
+#### [P2-8] done - Key Manager 按 Provider 分组
 
 - **File**: `internal/tui/keymgr.go`
 - **Description**: Key 列表按 Provider 分组显示
@@ -178,7 +178,7 @@
 | Phase   | 总计 | 完成 | 待开始 |
 | ------- | ---- | ---- | ------ |
 | Phase 1 | 8    | 8    | 0      |
-| Phase 2 | 12   | 7    | 5      |
+| Phase 2 | 12   | 8    | 4      |
 
 ---
 
@@ -199,7 +199,7 @@
 
 ### P2 (改进)
 
-- [P2-8] Key Manager 分组
+- [P2-8] Key Manager 分组 ✅
 - [P2-9] Key CLI 子命令
 - [P2-10] Shell 转义
 - [P2-11] tmux 嵌套检测
@@ -209,4 +209,4 @@
 
 ## 下一步行动
 
-**建议从 [P2-8] 开始**: Key Manager 按 Provider 分组显示。
+**建议从 [P2-9] 开始**: Key Manager CLI 子命令。
