@@ -6,7 +6,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "~/.claude/skills/spec-workflow/scripts/hook-block-main.sh",
+            "command": "~/.claude/skills/workflow/scripts/hook-block-main.sh",
             "timeout": 5000
           }
         ]
@@ -16,7 +16,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "~/.claude/skills/spec-workflow/scripts/hook-require-spec.sh",
+            "command": "~/.claude/skills/workflow/scripts/hook-require-spec.sh",
             "timeout": 5000
           }
         ]
