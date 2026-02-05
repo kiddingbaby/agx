@@ -106,7 +106,9 @@ type Key struct {
 
 - 路径: `~/.config/agx/keys.yaml`
 - 权限: `0600`
-- 加密密钥: 环境变量 `AGX_SECRET`（32 字节）
+- 加密密钥优先级:
+  1. 环境变量 `AGX_SECRET`（32 字节，可选覆盖）
+  2. 文件 `~/.config/agx/secret`（自动生成）
 
 #### 操作
 

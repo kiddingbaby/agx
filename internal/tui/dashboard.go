@@ -30,6 +30,7 @@ type Dashboard struct {
 	callbacks    DashboardCallbacks
 	sessions     []session.SessionInfo
 	focusOnAgent bool // true = focus on agent list, false = focus on session table
+	loading      bool // prevents concurrent refresh and shows loading state
 }
 
 // NewDashboard creates a new session dashboard
@@ -168,9 +169,28 @@ func (d *Dashboard) Focus(delegate func(p tview.Primitive)) {
 }
 
 func (d *Dashboard) refreshSessions() {
+	if d.loading {
+		return
+	}
+	d.loading = true
+
+	d.sessionTable.Clear()
+	d.sessionTable.SetCell(0, 0, tview.NewTableCell("Loading...").
+		SetTextColor(CurrentTheme.FgMuted).
+		SetSelectable(false))
+
+	go func() {
+		sessions, err := d.orch.ListSessions()
+		d.app.QueueUpdateDraw(func() {
+			d.loading = false
+			d.updateSessionTable(sessions, err)
+		})
+	}()
+}
+
+func (d *Dashboard) updateSessionTable(sessions []session.SessionInfo, err error) {
 	d.sessionTable.Clear()
 
-	sessions, err := d.orch.ListSessions()
 	if err != nil {
 		d.sessionTable.SetCell(0, 0, tview.NewTableCell("Error loading sessions").
 			SetTextColor(CurrentTheme.Error).
@@ -239,11 +259,27 @@ func (d *Dashboard) killSelected() {
 	if row <= 0 || row > len(d.sessions) || len(d.sessions) == 0 {
 		return
 	}
-	s := d.sessions[row-1]
-	if d.callbacks.OnKill != nil {
-		d.callbacks.OnKill(s.Name)
+	if d.loading {
+		return
 	}
-	d.refreshSessions()
+
+	s := d.sessions[row-1]
+	d.loading = true
+
+	// Show "killing..." status
+	d.sessionTable.SetCell(row, 2, tview.NewTableCell("killing...").
+		SetTextColor(CurrentTheme.Warning))
+
+	go func() {
+		if d.callbacks.OnKill != nil {
+			d.callbacks.OnKill(s.Name)
+		}
+		sessions, err := d.orch.ListSessions()
+		d.app.QueueUpdateDraw(func() {
+			d.loading = false
+			d.updateSessionTable(sessions, err)
+		})
+	}()
 }
 
 func (d *Dashboard) hasActiveKey(provider string) bool {

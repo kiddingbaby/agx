@@ -1,6 +1,7 @@
 package main
 
 import (
+	"crypto/rand"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -68,21 +69,46 @@ func main() {
 }
 
 func initKeyStore() (*key.Store, error) {
-	secret := os.Getenv("AGX_SECRET")
-	if secret == "" {
-		return nil, fmt.Errorf("Error: AGX_SECRET environment variable is required (32 bytes)\nGenerate one with: openssl rand -base64 32 | head -c 32")
-	}
-	if len(secret) != 32 {
-		return nil, fmt.Errorf("Error: AGX_SECRET must be exactly 32 bytes (got %d)", len(secret))
-	}
-
 	configDir, err := os.UserHomeDir()
 	if err != nil {
 		return nil, fmt.Errorf("cannot determine home directory: %w", err)
 	}
-	storePath := filepath.Join(configDir, ".config", "agx", "keys.yaml")
+	agxDir := filepath.Join(configDir, ".config", "agx")
+	storePath := filepath.Join(agxDir, "keys.yaml")
+	secretPath := filepath.Join(agxDir, "secret")
 
-	return key.NewStore(storePath, []byte(secret[:32]))
+	// 1. 优先使用环境变量
+	if secret := os.Getenv("AGX_SECRET"); secret != "" {
+		if len(secret) != 32 {
+			return nil, fmt.Errorf("AGX_SECRET must be exactly 32 bytes (got %d)", len(secret))
+		}
+		return key.NewStore(storePath, []byte(secret))
+	}
+
+	// 2. 尝试从文件读取
+	if secretBytes, err := os.ReadFile(secretPath); err == nil && len(secretBytes) >= 32 {
+		return key.NewStore(storePath, secretBytes[:32])
+	}
+
+	// 3. 检测迁移场景
+	if _, err := os.Stat(storePath); err == nil {
+		return nil, fmt.Errorf("found existing keys.yaml but no encryption secret\n" +
+			"Migration: echo -n \"$AGX_SECRET\" > ~/.config/agx/secret")
+	}
+
+	// 4. 自动生成并保存
+	if err := os.MkdirAll(agxDir, 0700); err != nil {
+		return nil, fmt.Errorf("cannot create config directory: %w", err)
+	}
+	newSecret := make([]byte, 32)
+	if _, err := rand.Read(newSecret); err != nil {
+		return nil, fmt.Errorf("cannot generate secret: %w", err)
+	}
+	if err := os.WriteFile(secretPath, newSecret, 0600); err != nil {
+		return nil, fmt.Errorf("cannot save secret: %w", err)
+	}
+
+	return key.NewStore(storePath, newSecret)
 }
 
 // handleKeys handles `agx keys [sub]` commands
