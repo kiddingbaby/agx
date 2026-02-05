@@ -24,9 +24,9 @@
 │  │ agx (no args)         → TUI Dashboard│  │
 │  └──────────────────────────────────────┘  │
 ├────────────────────────────────────────────┤
-│              TUI Layer                     │
+│              TUI Layer (Bubble Tea)        │
 │  ┌────────────┬────────────┐              │
-│  │ Dashboard  │  KeyMgr    │              │
+│  │ Dashboard  │  KeyMgr    │  Elm Arch   │
 │  └────────────┴────────────┘              │
 ├────────────────────────────────────────────┤
 │         Session Orchestrator               │
@@ -45,14 +45,14 @@
 
 ### 技术栈
 
-| 组件 | 技术             | 说明                |
-| ---- | ---------------- | ------------------- |
-| 语言 | Go 1.22+         | 单二进制，跨平台    |
-| TUI  | tview + tcell    | 终端 UI 框架        |
-| 加密 | AES-GCM          | API Key 加密存储    |
-| 会话 | tmux >= 3.0      | session/window 管理 |
-| 配置 | YAML             | Key 存储格式        |
-| 主题 | Catppuccin Mocha | 统一配色方案        |
+| 组件 | 技术               | 说明                           |
+| ---- | ------------------ | ------------------------------ |
+| 语言 | Go 1.24+           | 单二进制，跨平台               |
+| TUI  | Bubble Tea + Bubbles + Lip Gloss | Elm 架构 TUI 框架 |
+| 加密 | AES-GCM            | API Key 加密存储               |
+| 会话 | tmux >= 3.0        | session/window 管理            |
+| 配置 | YAML               | Key 存储格式                   |
+| 主题 | Catppuccin Mocha   | 统一配色方案 (via Lip Gloss)   |
 
 ## 命令体系
 
@@ -162,6 +162,48 @@ type Key struct {
 
 `agx` 无参数时进入。
 
+**架构**：Elm Architecture (Model-View-Update)
+
+```go
+// Model - 状态
+type DashboardModel struct {
+    sessions   []session.SessionInfo
+    agents     []Agent
+    focus      Focus  // SessionList | AgentList
+    selected   int
+    loading    bool
+    err        error
+}
+
+// Update - 状态更新
+func (m DashboardModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
+    switch msg := msg.(type) {
+    case tea.KeyMsg:
+        switch msg.String() {
+        case "j", "down": return m.moveDown()
+        case "k", "up":   return m.moveUp()
+        case "enter":     return m.select()
+        case "tab":       return m.toggleFocus()
+        // ...
+        }
+    case SessionsMsg:
+        m.sessions = msg.sessions
+        m.loading = false
+    }
+    return m, nil
+}
+
+// View - 渲染
+func (m DashboardModel) View() string {
+    return lipgloss.JoinVertical(
+        lipgloss.Left,
+        m.renderSessionTable(),
+        m.renderAgentList(),
+        m.renderStatusBar(),
+    )
+}
+```
+
 **布局：**
 
 - 上半部分：Active Sessions 列表（Enter attach, d delete）
@@ -173,12 +215,52 @@ type Key struct {
 
 `agx keys` 无子命令时进入。
 
+**架构**：Elm Architecture (与 Dashboard 相同)
+
 **功能：**
 
 - 按 Provider 分组显示
 - 空 Provider 显示提示文字
 - 支持搜索过滤（`/`）
 - 删除需确认（Modal，默认 Cancel）
+- 表单使用 Bubbles huh 组件
+
+### 5. 主题系统 (Lip Gloss)
+
+```go
+// Catppuccin Mocha 颜色定义
+var (
+    BgPrimary   = lipgloss.Color("#1e1e2e")
+    BgSecondary = lipgloss.Color("#313244")
+    BgHighlight = lipgloss.Color("#45475a")
+
+    FgPrimary   = lipgloss.Color("#cdd6f4")
+    FgSecondary = lipgloss.Color("#a6adc8")
+    FgMuted     = lipgloss.Color("#6c7086")
+
+    Accent  = lipgloss.Color("#89b4fa") // 蓝
+    Success = lipgloss.Color("#a6e3a1") // 绿
+    Warning = lipgloss.Color("#f9e2af") // 黄
+    Error   = lipgloss.Color("#f38ba8") // 红
+)
+
+// 样式定义
+var (
+    TitleStyle = lipgloss.NewStyle().
+        Bold(true).
+        Foreground(FgPrimary).
+        Background(BgSecondary).
+        Padding(0, 1)
+
+    SelectedStyle = lipgloss.NewStyle().
+        Foreground(Accent).
+        Background(BgHighlight)
+
+    BorderStyle = lipgloss.NewStyle().
+        Border(lipgloss.RoundedBorder()).
+        BorderForeground(lipgloss.Color("#585b70"))
+)
+```
 
 ## 项目结构
 
@@ -192,11 +274,11 @@ agx/
 │   │   ├── store.go             # Key CRUD + 加密
 │   │   └── store_test.go        # Key Store 测试
 │   ├── tui/
-│   │   ├── theme.go             # Catppuccin Mocha 主题
-│   │   ├── dashboard.go         # Session Dashboard (新)
-│   │   ├── launcher.go          # Agent 选择（保留，Dashboard 内用）
-│   │   ├── dirpicker.go         # 目录选择器（保留，可选）
-│   │   └── keymgr.go            # Key 管理 UI
+│   │   ├── theme.go             # Catppuccin Mocha 主题 (Lip Gloss)
+│   │   ├── dashboard.go         # Session Dashboard (Bubble Tea Model)
+│   │   ├── keymgr.go            # Key 管理 UI (Bubble Tea Model)
+│   │   ├── components.go        # 共享组件 (list, table helpers)
+│   │   └── *_test.go            # TUI 单元测试
 │   ├── session/
 │   │   ├── orchestrator.go      # tmux 会话管理
 │   │   └── orchestrator_test.go # Orchestrator 测试
@@ -238,8 +320,9 @@ go install ./cmd/agx
 ```go
 require (
     github.com/google/uuid v1.6.0
-    github.com/rivo/tview v0.0.0-20240101153935-32b1c8f8d4b1
-    github.com/gdamore/tcell/v2 v2.7.0
+    github.com/charmbracelet/bubbletea v1.3.0
+    github.com/charmbracelet/bubbles v0.20.0
+    github.com/charmbracelet/lipgloss v1.1.0
     gopkg.in/yaml.v3 v3.0.1
 )
 ```

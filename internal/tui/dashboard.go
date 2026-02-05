@@ -78,8 +78,9 @@ func NewDashboard(orch *session.Orchestrator, store *key.Store, app *tview.Appli
 	d.AddItem(d.sessionTable, 0, 1, true)
 	d.AddItem(d.agentList, len(agents)+2, 0, false)
 
-	// Refresh sessions
-	d.refreshSessions()
+	// Initial sync refresh (app.Run() not started yet, QueueUpdateDraw unsafe)
+	sessions, err := orch.ListSessions()
+	d.updateSessionTable(sessions, err)
 
 	// Key handlers for session table
 	d.sessionTable.SetInputCapture(func(event *tcell.EventKey) *tcell.EventKey {
@@ -99,6 +100,9 @@ func NewDashboard(orch *session.Orchestrator, store *key.Store, app *tview.Appli
 				return tcell.NewEventKey(tcell.KeyUp, 0, tcell.ModNone)
 			case 'd':
 				d.killSelected()
+				return nil
+			case 'r':
+				d.refreshSessions()
 				return nil
 			case 'n':
 				d.focusOnAgent = true
