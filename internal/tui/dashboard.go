@@ -3,295 +3,348 @@ package tui
 import (
 	"fmt"
 	"os"
+	"strings"
 
-	"github.com/gdamore/tcell/v2"
-	"github.com/kiddingbaby/agx/internal/key"
+	"github.com/charmbracelet/bubbles/key"
+	"github.com/charmbracelet/bubbles/spinner"
+	"github.com/charmbracelet/bubbles/table"
+	tea "github.com/charmbracelet/bubbletea"
+	"github.com/charmbracelet/lipgloss"
+	ks "github.com/kiddingbaby/agx/internal/key"
 	"github.com/kiddingbaby/agx/internal/session"
-	"github.com/rivo/tview"
 )
 
-// DashboardCallbacks holds the callback functions for dashboard actions
+// Focus tracks which panel has focus
+type Focus int
+
+const (
+	FocusSessions Focus = iota
+	FocusAgents
+)
+
+// DashboardCallbacks holds callback functions for dashboard actions
 type DashboardCallbacks struct {
 	OnAttach func(sessionName string)
 	OnLaunch func(agent Agent)
 	OnKill   func(sessionName string)
 	OnKeys   func()
-	OnQuit   func()
 }
 
-// Dashboard is the main session management TUI
-type Dashboard struct {
-	*tview.Flex
-	orch         *session.Orchestrator
-	store        *key.Store
-	app          *tview.Application
-	sessionTable *tview.Table
-	agentList    *tview.List
-	callbacks    DashboardCallbacks
-	sessions     []session.SessionInfo
-	focusOnAgent bool // true = focus on agent list, false = focus on session table
-	loading      bool // prevents concurrent refresh and shows loading state
+// sessionsMsg carries the result of listing sessions
+type sessionsMsg struct {
+	sessions []session.SessionInfo
+	err      error
 }
 
-// NewDashboard creates a new session dashboard
-func NewDashboard(orch *session.Orchestrator, store *key.Store, app *tview.Application, cb DashboardCallbacks) *Dashboard {
-	d := &Dashboard{
-		Flex:      tview.NewFlex(),
+// DashboardModel is the Bubble Tea model for the session dashboard
+type DashboardModel struct {
+	orch      *session.Orchestrator
+	store     *ks.Store
+	callbacks DashboardCallbacks
+
+	sessions  []session.SessionInfo
+	agents    []Agent
+	focus     Focus
+	cursor    int // cursor in the focused list
+	loading   bool
+	err       error
+	spinner   spinner.Model
+	width     int
+	height    int
+	quitting  bool
+	switchKey bool // signal to switch to key manager
+}
+
+// NewDashboardModel creates a new dashboard model
+func NewDashboardModel(orch *session.Orchestrator, store *ks.Store, cb DashboardCallbacks) DashboardModel {
+	s := spinner.New()
+	s.Spinner = spinner.Dot
+	s.Style = lipgloss.NewStyle().Foreground(Accent)
+
+	return DashboardModel{
 		orch:      orch,
 		store:     store,
-		app:       app,
 		callbacks: cb,
+		agents:    DefaultAgents(),
+		spinner:   s,
+		loading:   true,
 	}
-
-	// Session table (upper section)
-	d.sessionTable = tview.NewTable().
-		SetBorders(false).
-		SetSelectable(true, false)
-	d.sessionTable.SetTitle(" ACTIVE SESSIONS ").SetBorder(true)
-	CurrentTheme.ApplyToTable(d.sessionTable)
-
-	// Agent list (lower section)
-	d.agentList = tview.NewList()
-	d.agentList.SetTitle(" QUICK START ").SetBorder(true)
-	d.agentList.ShowSecondaryText(false)
-	CurrentTheme.ApplyToList(d.agentList)
-
-	// Populate agents
-	agents := DefaultAgents()
-	for i, agent := range agents {
-		idx := i
-		hasKey := d.hasActiveKey(agent.Provider)
-		keyStatus := "[#a6e3a1]✓[-]"
-		if !hasKey {
-			keyStatus = "[#f38ba8]✗ (no key)[-]"
-		}
-		label := fmt.Sprintf("[%d] %s  %s", i+1, agent.Name, keyStatus)
-		d.agentList.AddItem(label, "", rune('1'+idx), func() {
-			if cb.OnLaunch != nil {
-				cb.OnLaunch(agents[idx])
-			}
-		})
-	}
-
-	// Layout: session table on top, agent list on bottom
-	d.SetDirection(tview.FlexRow)
-	d.AddItem(d.sessionTable, 0, 1, true)
-	d.AddItem(d.agentList, len(agents)+2, 0, false)
-
-	// Initial sync refresh (app.Run() not started yet, QueueUpdateDraw unsafe)
-	sessions, err := orch.ListSessions()
-	d.updateSessionTable(sessions, err)
-
-	// Key handlers for session table
-	d.sessionTable.SetInputCapture(func(event *tcell.EventKey) *tcell.EventKey {
-		switch event.Key() {
-		case tcell.KeyEnter:
-			d.attachSelected()
-			return nil
-		case tcell.KeyTab:
-			d.focusOnAgent = true
-			d.app.SetFocus(d.agentList)
-			return nil
-		case tcell.KeyRune:
-			switch event.Rune() {
-			case 'j':
-				return tcell.NewEventKey(tcell.KeyDown, 0, tcell.ModNone)
-			case 'k':
-				return tcell.NewEventKey(tcell.KeyUp, 0, tcell.ModNone)
-			case 'd':
-				d.killSelected()
-				return nil
-			case 'r':
-				d.refreshSessions()
-				return nil
-			case 'n':
-				d.focusOnAgent = true
-				d.app.SetFocus(d.agentList)
-				return nil
-			case 'K':
-				if cb.OnKeys != nil {
-					cb.OnKeys()
-				}
-				return nil
-			case 'q':
-				if cb.OnQuit != nil {
-					cb.OnQuit()
-				}
-				return nil
-			case '1', '2', '3':
-				idx := int(event.Rune() - '1')
-				if idx < d.agentList.GetItemCount() {
-					agents := DefaultAgents()
-					if idx < len(agents) && cb.OnLaunch != nil {
-						cb.OnLaunch(agents[idx])
-					}
-				}
-				return nil
-			}
-		}
-		return event
-	})
-
-	// Key handlers for agent list
-	d.agentList.SetInputCapture(func(event *tcell.EventKey) *tcell.EventKey {
-		switch event.Key() {
-		case tcell.KeyTab, tcell.KeyEscape:
-			d.focusOnAgent = false
-			d.app.SetFocus(d.sessionTable)
-			return nil
-		case tcell.KeyRune:
-			switch event.Rune() {
-			case 'j':
-				return tcell.NewEventKey(tcell.KeyDown, 0, tcell.ModNone)
-			case 'k':
-				return tcell.NewEventKey(tcell.KeyUp, 0, tcell.ModNone)
-			case 'K':
-				if cb.OnKeys != nil {
-					cb.OnKeys()
-				}
-				return nil
-			case 'q':
-				if cb.OnQuit != nil {
-					cb.OnQuit()
-				}
-				return nil
-			}
-		}
-		return event
-	})
-
-	return d
 }
 
-// Focus delegates focus to the appropriate child
-func (d *Dashboard) Focus(delegate func(p tview.Primitive)) {
-	if d.focusOnAgent {
-		delegate(d.agentList)
+// ShouldSwitchToKeys returns true if user requested key manager
+func (m DashboardModel) ShouldSwitchToKeys() bool {
+	return m.switchKey
+}
+
+func (m DashboardModel) Init() tea.Cmd {
+	return tea.Batch(m.spinner.Tick, m.fetchSessions())
+}
+
+func (m DashboardModel) fetchSessions() tea.Cmd {
+	return func() tea.Msg {
+		sessions, err := m.orch.ListSessions()
+		return sessionsMsg{sessions: sessions, err: err}
+	}
+}
+
+func (m DashboardModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
+	switch msg := msg.(type) {
+
+	case tea.WindowSizeMsg:
+		m.width = msg.Width
+		m.height = msg.Height
+		return m, nil
+
+	case sessionsMsg:
+		m.loading = false
+		m.sessions = msg.sessions
+		m.err = msg.err
+		return m, nil
+
+	case spinner.TickMsg:
+		if m.loading {
+			var cmd tea.Cmd
+			m.spinner, cmd = m.spinner.Update(msg)
+			return m, cmd
+		}
+		return m, nil
+
+	case tea.KeyMsg:
+		return m.handleKey(msg)
+	}
+
+	return m, nil
+}
+
+func (m DashboardModel) handleKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
+	k := msg.String()
+
+	// Global keys
+	switch k {
+	case "q", "ctrl+c":
+		m.quitting = true
+		return m, tea.Quit
+	case "K":
+		m.switchKey = true
+		return m, tea.Quit
+	}
+
+	// Number keys for quick launch (always available)
+	if len(k) == 1 && k[0] >= '1' && k[0] <= '3' {
+		idx := int(k[0] - '1')
+		if idx < len(m.agents) && m.callbacks.OnLaunch != nil {
+			m.callbacks.OnLaunch(m.agents[idx])
+			return m, tea.Quit
+		}
+		return m, nil
+	}
+
+	switch m.focus {
+	case FocusSessions:
+		return m.handleSessionKeys(k)
+	case FocusAgents:
+		return m.handleAgentKeys(k)
+	}
+
+	return m, nil
+}
+
+func (m DashboardModel) handleSessionKeys(k string) (tea.Model, tea.Cmd) {
+	maxIdx := len(m.sessions) - 1
+
+	switch k {
+	case "j", "down":
+		if m.cursor < maxIdx {
+			m.cursor++
+		}
+	case "k", "up":
+		if m.cursor > 0 {
+			m.cursor--
+		}
+	case "tab", "n":
+		m.focus = FocusAgents
+		m.cursor = 0
+	case "enter":
+		if m.cursor < len(m.sessions) && m.callbacks.OnAttach != nil {
+			m.callbacks.OnAttach(m.sessions[m.cursor].Name)
+			return m, tea.Quit
+		}
+	case "d":
+		if m.cursor < len(m.sessions) && m.callbacks.OnKill != nil {
+			name := m.sessions[m.cursor].Name
+			m.callbacks.OnKill(name)
+			m.loading = true
+			return m, tea.Batch(m.spinner.Tick, m.fetchSessions())
+		}
+	case "r":
+		m.loading = true
+		return m, tea.Batch(m.spinner.Tick, m.fetchSessions())
+	}
+
+	return m, nil
+}
+
+func (m DashboardModel) handleAgentKeys(k string) (tea.Model, tea.Cmd) {
+	maxIdx := len(m.agents) - 1
+
+	switch k {
+	case "j", "down":
+		if m.cursor < maxIdx {
+			m.cursor++
+		}
+	case "k", "up":
+		if m.cursor > 0 {
+			m.cursor--
+		}
+	case "tab", "esc":
+		m.focus = FocusSessions
+		m.cursor = 0
+	case "enter":
+		if m.cursor < len(m.agents) && m.callbacks.OnLaunch != nil {
+			m.callbacks.OnLaunch(m.agents[m.cursor])
+			return m, tea.Quit
+		}
+	}
+
+	return m, nil
+}
+
+func (m DashboardModel) View() string {
+	if m.quitting {
+		return ""
+	}
+
+	// Calculate available height (subtract status bar)
+	availHeight := m.height - 3
+
+	// Session panel
+	sessionPanel := m.renderSessionPanel(availHeight)
+
+	// Agent panel
+	agentPanel := m.renderAgentPanel()
+
+	// Status bar
+	statusBar := m.renderStatusBar()
+
+	return lipgloss.JoinVertical(lipgloss.Left,
+		sessionPanel,
+		agentPanel,
+		statusBar,
+	)
+}
+
+func (m DashboardModel) renderSessionPanel(maxHeight int) string {
+	var content string
+
+	if m.loading {
+		content = fmt.Sprintf("  %s Loading sessions...", m.spinner.View())
+	} else if m.err != nil {
+		content = ErrorStyle.Render("  Error loading sessions")
+	} else if len(m.sessions) == 0 {
+		content = MutedStyle.Render("  No active sessions") + "\n" +
+			MutedStyle.Render("  Press 1-3 or Tab to start a new agent")
 	} else {
-		delegate(d.sessionTable)
-	}
-}
+		// Table header
+		header := fmt.Sprintf("  %-20s  %-12s  %s",
+			WarningStyle.Render("Session"),
+			WarningStyle.Render("Windows"),
+			WarningStyle.Render("Status"))
+		content = header
 
-func (d *Dashboard) refreshSessions() {
-	if d.loading {
-		return
-	}
-	d.loading = true
+		for i, s := range m.sessions {
+			winStr := fmt.Sprintf("%d window", s.Windows)
+			if s.Windows != 1 {
+				winStr += "s"
+			}
+			status := ""
+			if s.Attached {
+				status = "attached"
+			}
 
-	d.sessionTable.Clear()
-	d.sessionTable.SetCell(0, 0, tview.NewTableCell("Loading...").
-		SetTextColor(CurrentTheme.FgMuted).
-		SetSelectable(false))
+			line := fmt.Sprintf("  %-20s  %-12s  %s",
+				AccentStyle.Render(s.Name),
+				SecondaryStyle.Render(winStr),
+				SuccessStyle.Render(status))
 
-	go func() {
-		sessions, err := d.orch.ListSessions()
-		d.app.QueueUpdateDraw(func() {
-			d.loading = false
-			d.updateSessionTable(sessions, err)
-		})
-	}()
-}
-
-func (d *Dashboard) updateSessionTable(sessions []session.SessionInfo, err error) {
-	d.sessionTable.Clear()
-
-	if err != nil {
-		d.sessionTable.SetCell(0, 0, tview.NewTableCell("Error loading sessions").
-			SetTextColor(CurrentTheme.Error).
-			SetSelectable(false))
-		return
-	}
-
-	d.sessions = sessions
-
-	if len(sessions) == 0 {
-		d.sessionTable.SetCell(0, 0, tview.NewTableCell("No active sessions").
-			SetTextColor(CurrentTheme.FgMuted).
-			SetSelectable(false))
-		d.sessionTable.SetCell(1, 0, tview.NewTableCell("Press 1-3 or Tab to start a new agent").
-			SetTextColor(CurrentTheme.FgMuted).
-			SetSelectable(false))
-		return
-	}
-
-	// Headers
-	headers := []string{"Session", "Windows", "Status"}
-	for i, h := range headers {
-		d.sessionTable.SetCell(0, i, tview.NewTableCell(h).
-			SetTextColor(CurrentTheme.Warning).
-			SetSelectable(false).
-			SetExpansion(1))
-	}
-
-	for i, s := range sessions {
-		d.sessionTable.SetCell(i+1, 0, tview.NewTableCell(s.Name).
-			SetTextColor(CurrentTheme.Accent))
-
-		// Windows
-		winStr := fmt.Sprintf("%d window", s.Windows)
-		if s.Windows != 1 {
-			winStr += "s"
+			if m.focus == FocusSessions && i == m.cursor {
+				line = SelectedStyle.Render("> ") + fmt.Sprintf("%-20s  %-12s  %s",
+					SelectedStyle.Render(s.Name),
+					SecondaryStyle.Render(winStr),
+					SuccessStyle.Render(status))
+			}
+			content += "\n" + line
 		}
-		d.sessionTable.SetCell(i+1, 1, tview.NewTableCell(winStr).
-			SetTextColor(CurrentTheme.FgSecondary))
+	}
 
-		// Status
-		status := ""
-		if s.Attached {
-			status = "attached"
+	title := " ACTIVE SESSIONS "
+	style := PanelStyle
+	if m.focus == FocusSessions {
+		style = PanelFocusStyle
+	}
+
+	panelHeight := maxHeight - len(m.agents) - 4
+	if panelHeight < 5 {
+		panelHeight = 5
+	}
+
+	return style.
+		Width(m.width - 2).
+		Height(panelHeight).
+		Render(TitleStyle.Render(title) + "\n" + content)
+}
+
+func (m DashboardModel) renderAgentPanel() string {
+	var lines []string
+
+	for i, agent := range m.agents {
+		hasKey := m.hasActiveKey(agent.Provider)
+		keyStatus := SuccessStyle.Render("✓")
+		if !hasKey {
+			keyStatus = ErrorStyle.Render("✗ (no key)")
 		}
-		d.sessionTable.SetCell(i+1, 2, tview.NewTableCell(status).
-			SetTextColor(CurrentTheme.Success))
-	}
 
-	d.sessionTable.Select(1, 0)
-}
+		label := fmt.Sprintf("[%d] %-14s %s", i+1, agent.Name, keyStatus)
 
-func (d *Dashboard) attachSelected() {
-	row, _ := d.sessionTable.GetSelection()
-	if row <= 0 || row > len(d.sessions) || len(d.sessions) == 0 {
-		return
-	}
-	s := d.sessions[row-1]
-	if d.callbacks.OnAttach != nil {
-		d.callbacks.OnAttach(s.Name)
-	}
-}
-
-func (d *Dashboard) killSelected() {
-	row, _ := d.sessionTable.GetSelection()
-	if row <= 0 || row > len(d.sessions) || len(d.sessions) == 0 {
-		return
-	}
-	if d.loading {
-		return
-	}
-
-	s := d.sessions[row-1]
-	d.loading = true
-
-	// Show "killing..." status
-	d.sessionTable.SetCell(row, 2, tview.NewTableCell("killing...").
-		SetTextColor(CurrentTheme.Warning))
-
-	go func() {
-		if d.callbacks.OnKill != nil {
-			d.callbacks.OnKill(s.Name)
+		if m.focus == FocusAgents && i == m.cursor {
+			label = SelectedStyle.Render(fmt.Sprintf("> [%d] %-14s", i+1, agent.Name)) + " " + keyStatus
 		}
-		sessions, err := d.orch.ListSessions()
-		d.app.QueueUpdateDraw(func() {
-			d.loading = false
-			d.updateSessionTable(sessions, err)
-		})
-	}()
+
+		lines = append(lines, "  "+label)
+	}
+
+	content := strings.Join(lines, "\n")
+
+	title := " QUICK START "
+	style := PanelStyle
+	if m.focus == FocusAgents {
+		style = PanelFocusStyle
+	}
+
+	return style.
+		Width(m.width - 2).
+		Render(TitleStyle.Render(title) + "\n" + content)
 }
 
-func (d *Dashboard) hasActiveKey(provider string) bool {
-	_, err := d.store.GetActive(key.Provider(provider))
+func (m DashboardModel) renderStatusBar() string {
+	bar := fmt.Sprintf(" %s │ %s Attach │ %s Launch │ %s Kill │ %s Keys │ %s Switch │ %s Quit",
+		WarningStyle.Render("AGX"),
+		SuccessStyle.Render("Enter"),
+		SuccessStyle.Render("1-3"),
+		SuccessStyle.Render("d"),
+		SuccessStyle.Render("K"),
+		SuccessStyle.Render("Tab"),
+		SuccessStyle.Render("q"),
+	)
+
+	return StatusBarStyle.Width(m.width).Render(bar)
+}
+
+func (m DashboardModel) hasActiveKey(provider string) bool {
+	_, err := m.store.GetActive(ks.Provider(provider))
 	return err == nil
 }
 
-// GetCwd returns the current working directory (for launching agents)
+// GetCwd returns the current working directory
 func GetCwd() string {
 	dir, err := os.Getwd()
 	if err != nil {
@@ -299,3 +352,9 @@ func GetCwd() string {
 	}
 	return dir
 }
+
+// Ensure unused imports are used (table, key are used in keymgr)
+var (
+	_ = table.New
+	_ = key.NewBinding
+)

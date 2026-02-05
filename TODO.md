@@ -194,7 +194,7 @@
 | Phase 1 | 8    | 8    | 0      |
 | Phase 2 | 12   | 12   | 0      |
 | Phase 3 | 1    | 1    | 0      |
-| Phase 4 | 6    | 0    | 6      |
+| Phase 4 | 6    | 6    | 0      |
 
 ---
 
@@ -235,7 +235,7 @@
 
 ### P0: 基础设施
 
-#### [P4-1] pending - 添加 Bubble Tea 依赖
+#### [P4-1] done - 添加 Bubble Tea 依赖
 
 - **File**: `go.mod`, `go.sum`
 - **Description**: 添加 Charm 生态依赖
@@ -247,7 +247,7 @@
 
 ---
 
-#### [P4-2] pending - 实现 Lip Gloss 主题
+#### [P4-2] done - 实现 Lip Gloss 主题
 
 - **File**: `internal/tui/theme.go`
 - **Description**: 用 Lip Gloss 重写 Catppuccin Mocha 主题
@@ -260,7 +260,7 @@
 
 ### P1: 核心 TUI 组件
 
-#### [P4-3] pending - 重写 Dashboard (Bubble Tea)
+#### [P4-3] done - 重写 Dashboard (Bubble Tea)
 
 - **File**: `internal/tui/dashboard.go`
 - **Description**: 用 Elm Architecture 重写 Session Dashboard
@@ -274,7 +274,7 @@
 
 ---
 
-#### [P4-4] pending - 重写 Key Manager (Bubble Tea)
+#### [P4-4] done - 重写 Key Manager (Bubble Tea)
 
 - **File**: `internal/tui/keymgr.go`
 - **Description**: 用 Elm Architecture 重写 Key Manager
@@ -289,7 +289,7 @@
 
 ### P2: 集成与清理
 
-#### [P4-5] pending - 集成到 main.go
+#### [P4-5] done - 集成到 main.go
 
 - **File**: `cmd/agx/main.go`, `cmd/agx/tui.go`
 - **Description**: 用 Bubble Tea 替换 tview 启动逻辑
@@ -300,7 +300,7 @@
 
 ---
 
-#### [P4-6] pending - 删除 tview 依赖
+#### [P4-6] done - 删除 tview 依赖
 
 - **File**: `go.mod`, `internal/tui/*.go`
 - **Description**: 完全移除 tview/tcell，清理代码
@@ -313,4 +313,4 @@
 
 ## 下一步行动
 
-**Phase 4 进行中！** TUI 框架迁移 tview → Bubble Tea。
+**Phase 4 已完成！** TUI 框架已迁移到 Bubble Tea + Bubbles + Lip Gloss。

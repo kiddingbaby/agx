@@ -70,3 +70,63 @@ func TestGetCwd(t *testing.T) {
 		t.Error("GetCwd() returned empty string")
 	}
 }
+
+func TestSplitTags(t *testing.T) {
+	tests := []struct {
+		input    string
+		expected []string
+	}{
+		{"a,b,c", []string{"a", "b", "c"}},
+		{"a, b, c", []string{"a", "b", "c"}},
+		{"single", []string{"single"}},
+		{"", nil},
+		{"  spaced  , values  ", []string{"spaced", "values"}},
+	}
+
+	for _, tt := range tests {
+		result := splitTags(tt.input)
+		if len(result) != len(tt.expected) {
+			t.Errorf("splitTags(%q) = %v, want %v", tt.input, result, tt.expected)
+			continue
+		}
+		for i := range result {
+			if result[i] != tt.expected[i] {
+				t.Errorf("splitTags(%q)[%d] = %v, want %v", tt.input, i, result[i], tt.expected[i])
+			}
+		}
+	}
+}
+
+func TestDefaultAgents(t *testing.T) {
+	agents := DefaultAgents()
+
+	if len(agents) != 3 {
+		t.Errorf("DefaultAgents() returned %d agents, want 3", len(agents))
+	}
+
+	expected := []struct {
+		name     string
+		command  string
+		envVar   string
+		provider string
+	}{
+		{"claude-code", "claude", "ANTHROPIC_API_KEY", "claude"},
+		{"codex-cli", "codex", "OPENAI_API_KEY", "openai"},
+		{"gemini-cli", "gemini", "GOOGLE_API_KEY", "gemini"},
+	}
+
+	for i, exp := range expected {
+		if agents[i].Name != exp.name {
+			t.Errorf("agents[%d].Name = %v, want %v", i, agents[i].Name, exp.name)
+		}
+		if agents[i].Command != exp.command {
+			t.Errorf("agents[%d].Command = %v, want %v", i, agents[i].Command, exp.command)
+		}
+		if agents[i].EnvVar != exp.envVar {
+			t.Errorf("agents[%d].EnvVar = %v, want %v", i, agents[i].EnvVar, exp.envVar)
+		}
+		if agents[i].Provider != exp.provider {
+			t.Errorf("agents[%d].Provider = %v, want %v", i, agents[i].Provider, exp.provider)
+		}
+	}
+}
