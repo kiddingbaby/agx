@@ -10,6 +10,7 @@
 
 # Agent files
 .workflow/
+agx
 DESIGN.md
 SPECS.md
 TODO.md
