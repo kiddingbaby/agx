@@ -194,6 +194,7 @@
 | Phase 1 | 8    | 8    | 0      |
 | Phase 2 | 12   | 12   | 0      |
 | Phase 3 | 1    | 1    | 0      |
+| Phase 4 | 6    | 6    | 0      |
 
 ---
 
@@ -222,6 +223,94 @@
 
 ---
 
+## Phase 4: TUI 框架迁移 (tview → Bubble Tea)
+
+> 目标：迁移到 Elm Architecture，使用 Bubble Tea + Bubbles + Lip Gloss
+
+### 迁移策略
+
+1. **并行实现**：在 `internal/tui/bubbletea/` 创建新实现
+2. **逐步切换**：通过 build tag 或 flag 切换新旧实现
+3. **完全迁移**：删除 tview 代码，移除依赖
+
+### P0: 基础设施
+
+#### [P4-1] done - 添加 Bubble Tea 依赖
+
+- **File**: `go.mod`, `go.sum`
+- **Description**: 添加 Charm 生态依赖
+- **Details**:
+  - `github.com/charmbracelet/bubbletea` v1.3.0
+  - `github.com/charmbracelet/bubbles` v0.20.0
+  - `github.com/charmbracelet/lipgloss` v1.1.0
+  - 移除 `github.com/rivo/tview` 和 `github.com/gdamore/tcell/v2`
+
+---
+
+#### [P4-2] done - 实现 Lip Gloss 主题
+
+- **File**: `internal/tui/theme.go`
+- **Description**: 用 Lip Gloss 重写 Catppuccin Mocha 主题
+- **Details**:
+  - 定义颜色常量 (`lipgloss.Color`)
+  - 定义样式 (`lipgloss.Style`) - Title, Border, Selected, Error 等
+  - 保持与 DESIGN.md 一致的配色
+
+---
+
+### P1: 核心 TUI 组件
+
+#### [P4-3] done - 重写 Dashboard (Bubble Tea)
+
+- **File**: `internal/tui/dashboard.go`
+- **Description**: 用 Elm Architecture 重写 Session Dashboard
+- **Details**:
+  - `DashboardModel` struct (sessions, agents, focus, loading)
+  - `Init()` → 返回初始 Cmd (获取 sessions)
+  - `Update(msg)` → 处理 KeyMsg, SessionsMsg, ErrorMsg
+  - `View()` → 用 Lip Gloss 渲染双面板布局
+  - 键位映射: j/k, Tab, Enter, d, K, q, 1-3
+  - 使用 Bubbles `list` 或自定义 table 组件
+
+---
+
+#### [P4-4] done - 重写 Key Manager (Bubble Tea)
+
+- **File**: `internal/tui/keymgr.go`
+- **Description**: 用 Elm Architecture 重写 Key Manager
+- **Details**:
+  - `KeyManagerModel` struct (keys, providers, focus, formState)
+  - Provider 分组列表
+  - 表单使用 Bubbles `textinput` + `huh` form
+  - Modal 确认删除
+  - 搜索过滤 (`/`)
+
+---
+
+### P2: 集成与清理
+
+#### [P4-5] done - 集成到 main.go
+
+- **File**: `cmd/agx/main.go`, `cmd/agx/tui.go`
+- **Description**: 用 Bubble Tea 替换 tview 启动逻辑
+- **Details**:
+  - `tea.NewProgram(model).Run()`
+  - 处理 Alt-Screen 模式
+  - 支持 `--debug` 输出到文件
+
+---
+
+#### [P4-6] done - 删除 tview 依赖
+
+- **File**: `go.mod`, `internal/tui/*.go`
+- **Description**: 完全移除 tview/tcell，清理代码
+- **Details**:
+  - 删除 `launcher.go`, `dirpicker.go` (未使用)
+  - 更新测试
+  - `go mod tidy`
+
+---
+
 ## 下一步行动
 
-**Phase 3 进行中！** P3-1 自动生成密钥已完成。
+**Phase 4 已完成！** TUI 框架已迁移到 Bubble Tea + Bubbles + Lip Gloss。

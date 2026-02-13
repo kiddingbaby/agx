@@ -1,0 +1,15 @@
+# Binary
+/agx
+
+# IDE
+.idea/
+.vscode/
+
+# OS
+.DS_Store
+
+# Agent files
+.workflow/
+DESIGN.md
+SPECS.md
+TODO.md
