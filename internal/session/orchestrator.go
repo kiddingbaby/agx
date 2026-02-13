@@ -154,10 +154,10 @@ func (o *Orchestrator) Attach(sessionName string) error {
 
 // SessionInfo holds information about an active session
 type SessionInfo struct {
-	Name       string
-	Windows    int
-	CreatedAt  string
-	Attached   bool
+	Name      string
+	Windows   int
+	CreatedAt string
+	Attached  bool
 }
 
 // ListSessions returns all active AI sessions

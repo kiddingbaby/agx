@@ -19,13 +19,15 @@ const (
 	KeyMgrViewConfirm
 )
 
+const formFieldCount = 5 // provider, name, baseURL, apiKey, tags
+
 // KeyManagerModel is the Bubble Tea model for key management
 type KeyManagerModel struct {
 	store *key.Store
 
 	view       KeyMgrView
 	cursor     int
-	keyRows    []keyRow // flat list of selectable key entries
+	keyRows    []keyRow // flat list: provider headers + key entries
 	width      int
 	height     int
 	quitting   bool
@@ -34,9 +36,10 @@ type KeyManagerModel struct {
 	// Form state
 	formProviderIdx int
 	formName        textinput.Model
+	formBaseURL     textinput.Model
 	formKey         textinput.Model
 	formTags        textinput.Model
-	formFocus       int // 0=provider, 1=name, 2=key, 3=tags
+	formFocus       int // 0=provider, 1=name, 2=baseURL, 3=apiKey, 4=tags
 
 	// Confirm delete
 	confirmIdx    int
@@ -45,20 +48,30 @@ type KeyManagerModel struct {
 
 // keyRow represents a selectable row in the key list
 type keyRow struct {
-	keyIdx   int    // index into store.Keys, -1 for non-selectable
+	keyIdx   int // index into store.Keys, -1 for provider header
 	provider key.Provider
+	isHeader bool
 	display  string
 }
 
 var providers = []key.Provider{key.ProviderClaude, key.ProviderOpenAI, key.ProviderGemini}
 var providerNames = []string{"claude", "openai", "gemini"}
 
+// baseURLPlaceholders maps provider index to a placeholder URL
+var baseURLPlaceholders = []string{
+	"https://api.anthropic.com",
+	"https://api.openai.com/v1",
+	"https://generativelanguage.googleapis.com/v1",
+}
+
 // NewKeyManagerModel creates a new key manager model
 func NewKeyManagerModel(store *key.Store) KeyManagerModel {
-	return KeyManagerModel{
+	m := KeyManagerModel{
 		store: store,
 		view:  KeyMgrViewList,
 	}
+	m.buildKeyRows()
+	return m
 }
 
 // ShouldSwitchBack returns true if user requested going back
@@ -109,7 +122,8 @@ func (m KeyManagerModel) updateList(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	case "enter":
 		m.activateSelected()
 	case "a":
-		m.initForm()
+		providerIdx := m.currentProviderIdx()
+		m.initForm(providerIdx)
 		m.view = KeyMgrViewForm
 		return m, textinput.Blink
 	case "d":
@@ -123,9 +137,19 @@ func (m KeyManagerModel) updateList(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	return m, nil
 }
 
+// buildKeyRows creates a flat list with provider headers and key entries.
+// Provider headers are always present so navigation works even with no keys.
 func (m *KeyManagerModel) buildKeyRows() {
 	m.keyRows = nil
 	for _, provider := range providers {
+		// Add provider header row (always selectable)
+		m.keyRows = append(m.keyRows, keyRow{
+			keyIdx:   -1,
+			provider: provider,
+			isHeader: true,
+			display:  strings.ToUpper(string(provider)),
+		})
+		// Add key rows for this provider
 		for i, k := range m.store.Keys {
 			if k.Provider == provider {
 				active := "  "
@@ -146,8 +170,9 @@ func (m *KeyManagerModel) buildKeyRows() {
 		}
 	}
 	// Clamp cursor
-	if m.cursor >= len(m.keyRows) {
-		m.cursor = len(m.keyRows) - 1
+	maxIdx := len(m.keyRows) - 1
+	if m.cursor > maxIdx {
+		m.cursor = maxIdx
 	}
 	if m.cursor < 0 {
 		m.cursor = 0
@@ -166,6 +191,19 @@ func (m *KeyManagerModel) moveUp() {
 	}
 }
 
+// currentProviderIdx returns the provider index for the row at cursor
+func (m *KeyManagerModel) currentProviderIdx() int {
+	if m.cursor < len(m.keyRows) {
+		p := m.keyRows[m.cursor].provider
+		for i, pn := range providerNames {
+			if key.Provider(pn) == p {
+				return i
+			}
+		}
+	}
+	return 0
+}
+
 func (m *KeyManagerModel) activateSelected() {
 	if m.cursor >= len(m.keyRows) {
 		return
@@ -178,14 +216,20 @@ func (m *KeyManagerModel) activateSelected() {
 	m.store.Activate(k.ID)
 }
 
-func (m *KeyManagerModel) initForm() {
-	m.formProviderIdx = 0
-	m.formFocus = 0
+func (m *KeyManagerModel) initForm(providerIdx int) {
+	m.formProviderIdx = providerIdx
+	m.formFocus = 1 // start on Name (provider already pre-selected)
 
 	m.formName = textinput.New()
 	m.formName.Placeholder = "my-key"
 	m.formName.CharLimit = 30
 	m.formName.Width = 30
+	m.formName.Focus() // auto-focus name field
+
+	m.formBaseURL = textinput.New()
+	m.formBaseURL.Placeholder = baseURLPlaceholders[providerIdx]
+	m.formBaseURL.CharLimit = 200
+	m.formBaseURL.Width = 50
 
 	m.formKey = textinput.New()
 	m.formKey.Placeholder = "sk-..."
@@ -209,16 +253,17 @@ func (m KeyManagerModel) updateForm(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		return m, nil
 	case "tab", "shift+tab":
 		if k == "tab" {
-			m.formFocus = (m.formFocus + 1) % 4
+			m.formFocus = (m.formFocus + 1) % formFieldCount
 		} else {
-			m.formFocus = (m.formFocus + 3) % 4
+			m.formFocus = (m.formFocus + formFieldCount - 1) % formFieldCount
 		}
 		m.updateFormFocus()
-		return m, nil
+		return m, textinput.Blink
 	case "enter":
 		if m.formFocus == 0 {
-			// Cycle provider on enter
+			// Cycle provider on enter when focused on provider
 			m.formProviderIdx = (m.formProviderIdx + 1) % len(providerNames)
+			m.formBaseURL.Placeholder = baseURLPlaceholders[m.formProviderIdx]
 			return m, nil
 		}
 		// Try to save
@@ -231,17 +276,22 @@ func (m KeyManagerModel) updateForm(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	var cmd tea.Cmd
 	switch m.formFocus {
 	case 0:
-		// Provider selection: left/right to cycle
-		if k == "left" || k == "h" {
+		// Provider selection: h/l or left/right to cycle
+		switch k {
+		case "left", "h":
 			m.formProviderIdx = (m.formProviderIdx + len(providerNames) - 1) % len(providerNames)
-		} else if k == "right" || k == "l" {
+			m.formBaseURL.Placeholder = baseURLPlaceholders[m.formProviderIdx]
+		case "right", "l":
 			m.formProviderIdx = (m.formProviderIdx + 1) % len(providerNames)
+			m.formBaseURL.Placeholder = baseURLPlaceholders[m.formProviderIdx]
 		}
 	case 1:
 		m.formName, cmd = m.formName.Update(msg)
 	case 2:
-		m.formKey, cmd = m.formKey.Update(msg)
+		m.formBaseURL, cmd = m.formBaseURL.Update(msg)
 	case 3:
+		m.formKey, cmd = m.formKey.Update(msg)
+	case 4:
 		m.formTags, cmd = m.formTags.Update(msg)
 	}
 
@@ -250,6 +300,7 @@ func (m KeyManagerModel) updateForm(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 
 func (m *KeyManagerModel) updateFormFocus() {
 	m.formName.Blur()
+	m.formBaseURL.Blur()
 	m.formKey.Blur()
 	m.formTags.Blur()
 
@@ -257,8 +308,10 @@ func (m *KeyManagerModel) updateFormFocus() {
 	case 1:
 		m.formName.Focus()
 	case 2:
-		m.formKey.Focus()
+		m.formBaseURL.Focus()
 	case 3:
+		m.formKey.Focus()
+	case 4:
 		m.formTags.Focus()
 	}
 }
@@ -266,6 +319,7 @@ func (m *KeyManagerModel) updateFormFocus() {
 func (m *KeyManagerModel) saveForm() {
 	name := m.formName.Value()
 	apiKey := m.formKey.Value()
+	baseURL := m.formBaseURL.Value()
 	tagsStr := m.formTags.Value()
 
 	if name == "" || apiKey == "" {
@@ -282,7 +336,7 @@ func (m *KeyManagerModel) saveForm() {
 	}
 
 	provider := key.Provider(providerNames[m.formProviderIdx])
-	m.store.Add(provider, name, apiKey, tags)
+	m.store.Add(provider, name, apiKey, baseURL, tags)
 }
 
 func (m KeyManagerModel) updateConfirm(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
@@ -328,51 +382,48 @@ func (m KeyManagerModel) View() string {
 }
 
 func (m KeyManagerModel) viewList() string {
-	var sections []string
+	var lines []string
 
-	for _, provider := range providers {
-		header := WarningStyle.Render(strings.ToUpper(string(provider)))
-		separator := MutedStyle.Render("────────────────────────────────────────────────")
-
-		var rows []string
-		rows = append(rows, header)
-		rows = append(rows, separator)
-
-		hasKeys := false
-		rowIdx := 0
-		for _, kr := range m.keyRows {
-			if kr.provider == provider {
-				hasKeys = true
-				style := NormalStyle
-				if kr.keyIdx >= 0 && kr.keyIdx < len(m.store.Keys) && m.store.Keys[kr.keyIdx].Active {
-					style = SuccessStyle
-				}
-
-				line := style.Render(kr.display)
-				if rowIdx == m.cursor {
-					// Find actual index in keyRows
-					for ki, krow := range m.keyRows {
-						if krow.keyIdx == kr.keyIdx && krow.provider == kr.provider {
-							if ki == m.cursor {
-								line = SelectedStyle.Render("> " + kr.display)
-							}
-							break
-						}
-					}
-				}
-				rows = append(rows, "  "+line)
-				rowIdx++
+	for i, row := range m.keyRows {
+		if row.isHeader {
+			// Add blank line before non-first provider headers
+			if i > 0 {
+				lines = append(lines, "")
 			}
-		}
+			header := WarningStyle.Render(row.display)
+			separator := MutedStyle.Render("────────────────────────────────────────────────")
 
-		if !hasKeys {
-			rows = append(rows, MutedStyle.Render("  (no keys - press 'a' to add)"))
-		}
+			if i == m.cursor {
+				header = SelectedStyle.Render("> " + row.display)
+			}
+			lines = append(lines, header, separator)
 
-		sections = append(sections, strings.Join(rows, "\n"))
+			// Check if this provider has any keys
+			hasKeys := false
+			for j := i + 1; j < len(m.keyRows); j++ {
+				if m.keyRows[j].isHeader {
+					break
+				}
+				hasKeys = true
+				break
+			}
+			if !hasKeys {
+				lines = append(lines, MutedStyle.Render("  (no keys - press 'a' to add)"))
+			}
+		} else {
+			style := NormalStyle
+			if row.keyIdx >= 0 && row.keyIdx < len(m.store.Keys) && m.store.Keys[row.keyIdx].Active {
+				style = SuccessStyle
+			}
+			line := "  " + style.Render(row.display)
+			if i == m.cursor {
+				line = SelectedStyle.Render("> " + row.display)
+			}
+			lines = append(lines, line)
+		}
 	}
 
-	content := strings.Join(sections, "\n\n")
+	content := strings.Join(lines, "\n")
 
 	title := " KEY MANAGER "
 	panel := PanelFocusStyle.
@@ -413,18 +464,23 @@ func (m KeyManagerModel) viewForm() string {
 
   %s   %s
 
-  %s   %s
+  %s       %s
+
+  %s  %s
+             %s
 
   %s   %s
 
-  %s   %s
+  %s       %s
 
   %s`,
 		title,
 		focusLabel("Provider:", 0), providerDisplay,
 		focusLabel("Name:", 1), m.formName.View(),
-		focusLabel("API Key:", 2), m.formKey.View(),
-		focusLabel("Tags:", 3), m.formTags.View(),
+		focusLabel("Base URL:", 2), m.formBaseURL.View(),
+		MutedStyle.Render("(optional, leave empty for default)"),
+		focusLabel("API Key:", 3), m.formKey.View(),
+		focusLabel("Tags:", 4), m.formTags.View(),
 		MutedStyle.Render("Tab: next field │ Enter: save │ Esc: cancel"),
 	)
 

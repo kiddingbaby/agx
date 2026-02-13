@@ -48,7 +48,7 @@ func TestTruncate(t *testing.T) {
 		{
 			name:  "unicode truncated",
 			input: "你好世界",
-			max:   6, // 2 chars * 3 bytes = 6 bytes, but len("你好世界") = 12 > 6
+			max:   6,      // 2 chars * 3 bytes = 6 bytes, but len("你好世界") = 12 > 6
 			want:  "你...", // truncate works on bytes: s[:3] = "你"
 		},
 	}
