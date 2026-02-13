@@ -140,7 +140,7 @@ func printKeysUsage() {
 
 Commands:
   ls [--provider P]              List all keys
-  add --provider P --name N --key K [--tags T]  Add a new key
+  add --provider P --name N --key K [--base-url URL] [--tags T]  Add a new key
   activate <id|name>             Activate a key
   delete <id|name>               Delete a key
 
@@ -193,7 +193,7 @@ func handleKeysLs(store *key.Store, args []string) {
 
 // handleKeysAdd adds a new key
 func handleKeysAdd(store *key.Store, args []string) {
-	var provider, name, apiKey, tagsStr string
+	var provider, name, apiKey, baseURL, tagsStr string
 
 	for i := 0; i < len(args); i++ {
 		switch args[i] {
@@ -212,6 +212,11 @@ func handleKeysAdd(store *key.Store, args []string) {
 				apiKey = args[i+1]
 				i++
 			}
+		case "--base-url", "-b":
+			if i+1 < len(args) {
+				baseURL = args[i+1]
+				i++
+			}
 		case "--tags", "-t":
 			if i+1 < len(args) {
 				tagsStr = args[i+1]
@@ -222,7 +227,7 @@ func handleKeysAdd(store *key.Store, args []string) {
 
 	if provider == "" || name == "" || apiKey == "" {
 		fmt.Fprintln(os.Stderr, "Error: --provider, --name, and --key are required")
-		fmt.Fprintln(os.Stderr, "Usage: agx keys add --provider P --name N --key K [--tags T]")
+		fmt.Fprintln(os.Stderr, "Usage: agx keys add --provider P --name N --key K [--base-url URL] [--tags T]")
 		os.Exit(1)
 	}
 
@@ -244,7 +249,7 @@ func handleKeysAdd(store *key.Store, args []string) {
 		}
 	}
 
-	k, err := store.Add(key.Provider(provider), name, apiKey, tags)
+	k, err := store.Add(key.Provider(provider), name, apiKey, baseURL, tags)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "Error: %v\n", err)
 		os.Exit(1)
@@ -404,6 +409,11 @@ func handleLaunch(store *key.Store, orch *session.Orchestrator, agentName string
 		},
 	}
 
+	// Inject Base URL if set
+	if activeKey.BaseURL != "" && agent.BaseURLEnvVar != "" {
+		cfg.EnvVars[agent.BaseURLEnvVar] = activeKey.BaseURL
+	}
+
 	if err := orch.Launch(cfg); err != nil {
 		fmt.Fprintf(os.Stderr, "Error: %v\n", err)
 		os.Exit(1)
@@ -486,7 +496,7 @@ Usage:
 
 Key Management:
   agx keys ls [--provider P]              List all keys
-  agx keys add --provider P --name N --key K [--tags T]
+  agx keys add --provider P --name N --key K [--base-url URL] [--tags T]
   agx keys activate <id|name>             Activate a key
   agx keys delete <id|name>               Delete a key
 

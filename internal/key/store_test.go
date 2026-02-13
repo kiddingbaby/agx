@@ -47,7 +47,7 @@ func TestStoreAddAndGet(t *testing.T) {
 	}
 
 	// Add a key
-	key, err := store.Add(ProviderClaude, "test-key", "sk-ant-api03-xxxxx", []string{"dev"})
+	key, err := store.Add(ProviderClaude, "test-key", "sk-ant-api03-xxxxx", "", []string{"dev"})
 	if err != nil {
 		t.Fatalf("Add() error = %v", err)
 	}
@@ -86,8 +86,8 @@ func TestStoreActivate(t *testing.T) {
 	}
 
 	// Add two keys
-	key1, _ := store.Add(ProviderClaude, "key1", "api-key-1", nil)
-	key2, _ := store.Add(ProviderClaude, "key2", "api-key-2", nil)
+	key1, _ := store.Add(ProviderClaude, "key1", "api-key-1", "", nil)
+	key2, _ := store.Add(ProviderClaude, "key2", "api-key-2", "", nil)
 
 	// Activate first key
 	if err := store.Activate(key1.ID); err != nil {
@@ -128,7 +128,7 @@ func TestStoreDelete(t *testing.T) {
 		t.Fatalf("NewStore() error = %v", err)
 	}
 
-	key, _ := store.Add(ProviderClaude, "test", "api-key", nil)
+	key, _ := store.Add(ProviderClaude, "test", "api-key", "", nil)
 
 	if err := store.Delete(key.ID); err != nil {
 		t.Fatalf("Delete() error = %v", err)
@@ -165,7 +165,7 @@ func TestStoreEncryptDecrypt(t *testing.T) {
 	}
 
 	originalKey := "sk-ant-api03-xxxxxxxxxxxxx"
-	key, _ := store.Add(ProviderClaude, "test", originalKey, nil)
+	key, _ := store.Add(ProviderClaude, "test", originalKey, "", nil)
 
 	// Activate to get decrypted key
 	store.Activate(key.ID)
@@ -189,7 +189,7 @@ func TestStorePersistence(t *testing.T) {
 	if err != nil {
 		t.Fatalf("NewStore() error = %v", err)
 	}
-	key, _ := store1.Add(ProviderClaude, "persist-test", "api-key", []string{"tag1"})
+	key, _ := store1.Add(ProviderClaude, "persist-test", "api-key", "", []string{"tag1"})
 	store1.Activate(key.ID)
 
 	// Create new store from same path
@@ -239,7 +239,7 @@ func TestStoreGetActiveNoActive(t *testing.T) {
 	}
 
 	// Add key but don't activate
-	store.Add(ProviderClaude, "test", "api-key", nil)
+	store.Add(ProviderClaude, "test", "api-key", "", nil)
 
 	_, err = store.GetActive(ProviderClaude)
 	if err == nil {
@@ -257,7 +257,7 @@ func TestStoreGetActiveWrongProvider(t *testing.T) {
 		t.Fatalf("NewStore() error = %v", err)
 	}
 
-	key, _ := store.Add(ProviderClaude, "test", "api-key", nil)
+	key, _ := store.Add(ProviderClaude, "test", "api-key", "", nil)
 	store.Activate(key.ID)
 
 	// Try to get active for different provider
@@ -278,9 +278,9 @@ func TestStoreMultipleProviders(t *testing.T) {
 	}
 
 	// Add keys for multiple providers
-	claudeKey, _ := store.Add(ProviderClaude, "claude-key", "sk-claude", nil)
-	openaiKey, _ := store.Add(ProviderOpenAI, "openai-key", "sk-openai", nil)
-	geminiKey, _ := store.Add(ProviderGemini, "gemini-key", "sk-gemini", nil)
+	claudeKey, _ := store.Add(ProviderClaude, "claude-key", "sk-claude", "", nil)
+	openaiKey, _ := store.Add(ProviderOpenAI, "openai-key", "sk-openai", "", nil)
+	geminiKey, _ := store.Add(ProviderGemini, "gemini-key", "sk-gemini", "", nil)
 
 	// Activate all
 	store.Activate(claudeKey.ID)
@@ -315,9 +315,9 @@ func TestStoreActivateDeactivatesOthers(t *testing.T) {
 	}
 
 	// Add multiple keys for same provider
-	key1, _ := store.Add(ProviderClaude, "key1", "api1", nil)
-	key2, _ := store.Add(ProviderClaude, "key2", "api2", nil)
-	key3, _ := store.Add(ProviderClaude, "key3", "api3", nil)
+	key1, _ := store.Add(ProviderClaude, "key1", "api1", "", nil)
+	key2, _ := store.Add(ProviderClaude, "key2", "api2", "", nil)
+	key3, _ := store.Add(ProviderClaude, "key3", "api3", "", nil)
 
 	// Activate key1
 	store.Activate(key1.ID)
@@ -354,8 +354,8 @@ func TestStoreList(t *testing.T) {
 	}
 
 	// Add keys
-	store.Add(ProviderClaude, "key1", "api1", nil)
-	store.Add(ProviderOpenAI, "key2", "api2", nil)
+	store.Add(ProviderClaude, "key1", "api1", "", nil)
+	store.Add(ProviderOpenAI, "key2", "api2", "", nil)
 
 	list := store.List()
 	if len(list) != 2 {
@@ -374,7 +374,7 @@ func TestStoreEmptyAPIKey(t *testing.T) {
 	}
 
 	// Add with empty API key (should still work - validation is caller's responsibility)
-	key, err := store.Add(ProviderClaude, "empty-key", "", nil)
+	key, err := store.Add(ProviderClaude, "empty-key", "", "", nil)
 	if err != nil {
 		t.Fatalf("Add() error = %v", err)
 	}
@@ -401,7 +401,7 @@ func TestStoreSpecialCharactersInAPIKey(t *testing.T) {
 
 	// API key with special characters
 	specialKey := "sk-ant-api03-xxx'yyy$zzz`cmd`\nline2\ttab"
-	key, err := store.Add(ProviderClaude, "special", specialKey, nil)
+	key, err := store.Add(ProviderClaude, "special", specialKey, "", nil)
 	if err != nil {
 		t.Fatalf("Add() error = %v", err)
 	}
@@ -427,7 +427,7 @@ func TestStoreUnicodeInName(t *testing.T) {
 	}
 
 	// Unicode in name and tags
-	key, err := store.Add(ProviderClaude, "测试密钥", "api-key", []string{"开发", "测试"})
+	key, err := store.Add(ProviderClaude, "测试密钥", "api-key", "", []string{"开发", "测试"})
 	if err != nil {
 		t.Fatalf("Add() error = %v", err)
 	}
@@ -462,7 +462,7 @@ func TestStoreWrongSecret(t *testing.T) {
 
 	// Create store and add key with secret1
 	store1, _ := NewStore(path, secret1)
-	key, _ := store1.Add(ProviderClaude, "test", "my-api-key", nil)
+	key, _ := store1.Add(ProviderClaude, "test", "my-api-key", "", nil)
 	store1.Activate(key.ID)
 
 	// Try to read with secret2
@@ -485,9 +485,9 @@ func TestStoreDeleteMiddleKey(t *testing.T) {
 
 	store, _ := NewStore(path, secret)
 
-	key1, _ := store.Add(ProviderClaude, "key1", "api1", nil)
-	key2, _ := store.Add(ProviderClaude, "key2", "api2", nil)
-	key3, _ := store.Add(ProviderClaude, "key3", "api3", nil)
+	key1, _ := store.Add(ProviderClaude, "key1", "api1", "", nil)
+	key2, _ := store.Add(ProviderClaude, "key2", "api2", "", nil)
+	key3, _ := store.Add(ProviderClaude, "key3", "api3", "", nil)
 
 	// Delete middle key
 	store.Delete(key2.ID)
@@ -511,7 +511,7 @@ func TestStoreCreatesDirectory(t *testing.T) {
 	}
 
 	// Add and save to trigger directory creation
-	store.Add(ProviderClaude, "test", "api-key", nil)
+	store.Add(ProviderClaude, "test", "api-key", "", nil)
 
 	// Verify file was created
 	if _, err := os.Stat(path); os.IsNotExist(err) {

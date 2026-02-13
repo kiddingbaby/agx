@@ -242,7 +242,7 @@ func (m DashboardModel) renderSessionPanel(maxHeight int) string {
 		content = ErrorStyle.Render("  Error loading sessions")
 	} else if len(m.sessions) == 0 {
 		content = MutedStyle.Render("  No active sessions") + "\n" +
-			MutedStyle.Render("  Press 1-3 or Tab to start a new agent")
+			MutedStyle.Render("  Press K to manage keys, or 1-3 to launch an agent")
 	} else {
 		// Table header
 		header := fmt.Sprintf("  %-20s  %-12s  %s",

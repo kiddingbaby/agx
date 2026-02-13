@@ -103,12 +103,36 @@ agx claude --dangerously-skip-permissions  # 透传长参数
 - **上半部分**：已有会话列表（Enter 可 attach）
 - **下半部分**：快速启动（数字键直接启动）
 - **焦点默认在已有会话**：方便快速 attach
+- **空会话时引导**：显示 "Press K to manage keys, or 1-3 to launch"
 
 ---
 
 ## 五、Key 管理完整设计
 
-### 5.1 Key 列表页（主页面）
+### 5.1 Key 数据模型
+
+```go
+type Key struct {
+    ID        string    `yaml:"id"`
+    Provider  Provider  `yaml:"provider"`
+    Name      string    `yaml:"name"`
+    APIKey    string    `yaml:"api_key"`            // AES-GCM 加密
+    BaseURL   string    `yaml:"base_url,omitempty"` // 明文，可选
+    Tags      []string  `yaml:"tags,omitempty"`
+    Active    bool      `yaml:"active"`
+    CreatedAt time.Time `yaml:"created_at"`
+}
+```
+
+**BaseURL 映射（参见 CLI_ENV.md）：**
+
+| Provider | API Key 环境变量 | Base URL 环境变量 |
+|----------|------------------|-------------------|
+| Claude   | `ANTHROPIC_API_KEY` | `ANTHROPIC_BASE_URL` |
+| OpenAI   | `OPENAI_API_KEY` | `OPENAI_API_BASE` |
+| Gemini   | `GOOGLE_API_KEY` | `GEMINI_BASE_URL` |
+
+### 5.2 Key 列表页（主页面）
 
 ```text
 ┌─────────────────────────────────────────────────────────────┐
@@ -129,34 +153,42 @@ agx claude --dangerously-skip-permissions  # 透传长参数
 │    (no keys - press 'a' to add)                             │
 │                                                             │
 ├─────────────────────────────────────────────────────────────┤
-│ Enter Activate  a Add  e Edit  d Delete  / Search  Esc Back │
+│ Enter Activate  a Add  d Delete  Esc Back                   │
 └─────────────────────────────────────────────────────────────┘
 ```
+
+**导航设计：**
+
+- `keyRows` 包含 provider header 行 + key 行
+- Provider header 可选中（`keyIdx=-1`），用于确定 `a` 新增时的 provider
+- j/k 在所有可选行间移动（包括 provider header）
+- 按 `a` 时根据当前光标所在 provider 预选表单
 
 **操作说明：**
 
 | 按键 | 操作 |
 |------|------|
-| `↑↓/jk` | 上下导航 |
+| `↑↓/jk` | 上下导航（含 provider header） |
 | `Enter` | 激活选中的 Key |
-| `a` | 添加新 Key |
-| `e` | 编辑选中的 Key |
+| `a` | 添加新 Key（预选当前 provider） |
 | `d` | 删除选中的 Key（需确认）|
-| `/` | 搜索 Key（按名称/标签）|
 | `Esc` | 返回 Dashboard |
 
 ---
 
-### 5.2 添加 Key 页面
+### 5.3 添加 Key 页面
 
 ```text
 ┌─────────────────────────────────────────────────────────────┐
-│  ADD NEW KEY                                     [Esc] Cancel│
+│  ADD KEY                                                    │
 ├─────────────────────────────────────────────────────────────┤
 │                                                             │
-│  Provider:  [ Claude    ▼ ]                                 │
+│  Provider:  < claude >                                      │
 │                                                             │
 │  Name:      [ my-new-key_________________ ]                 │
+│                                                             │
+│  Base URL:  [ https://api.anthropic.com__ ]                 │
+│             (optional, leave empty for default)             │
 │                                                             │
 │  API Key:   [ ******************************** ]            │
 │             (will be encrypted)                             │
@@ -164,64 +196,24 @@ agx claude --dangerously-skip-permissions  # 透传长参数
 │  Tags:      [ cache, code________________ ]                 │
 │             (comma separated, optional)                     │
 │                                                             │
-│  ─────────────────────────────────────────────────────────  │
-│                                                             │
-│         [ Save & Activate ]    [ Save ]    [ Cancel ]       │
-│                                                             │
 ├─────────────────────────────────────────────────────────────┤
-│ Tab Next field  Shift+Tab Previous  Enter Confirm           │
+│ Tab Next field  Shift+Tab Previous  Enter Save  Esc Cancel  │
 └─────────────────────────────────────────────────────────────┘
 ```
 
-**字段说明：**
+**字段顺序（formFocus 0-4）：**
 
-| 字段 | 必填 | 说明 |
-|------|------|------|
-| Provider | ✓ | 下拉选择：Claude / OpenAI / Gemini |
-| Name | ✓ | 自定义名称，用于识别 |
-| API Key | ✓ | 密钥，输入时显示 `*`，加密存储 |
-| Tags | - | 可选标签，逗号分隔 |
+| # | 字段 | 必填 | 说明 |
+|---|------|------|------|
+| 0 | Provider | ✓ | h/l 切换：Claude / OpenAI / Gemini |
+| 1 | Name | ✓ | 自定义名称 |
+| 2 | Base URL | - | 可选，按 provider 显示 placeholder |
+| 3 | API Key | ✓ | 密码遮罩，加密存储 |
+| 4 | Tags | - | 逗号分隔标签 |
 
-**按钮行为：**
-
-- `Save & Activate`: 保存并设为当前 Provider 的 Active Key
-- `Save`: 仅保存，不激活
-- `Cancel`: 放弃，返回列表
-
----
-
-### 5.3 编辑 Key 页面
-
-```text
-┌─────────────────────────────────────────────────────────────┐
-│  EDIT KEY: my-claude-key                         [Esc] Cancel│
-├─────────────────────────────────────────────────────────────┤
-│                                                             │
-│  Provider:  Claude (cannot change)                          │
-│                                                             │
-│  Name:      [ my-claude-key______________ ]                 │
-│                                                             │
-│  API Key:   [ ●●●●●●●●●●●●●●●●●●●●●●●●●●●● ]  [Change]      │
-│             (leave empty to keep current)                   │
-│                                                             │
-│  Tags:      [ cache, code________________ ]                 │
-│                                                             │
-│  Status:    ✓ Active                                        │
-│                                                             │
-│  ─────────────────────────────────────────────────────────  │
-│                                                             │
-│              [ Save ]              [ Cancel ]               │
-│                                                             │
-├─────────────────────────────────────────────────────────────┤
-│ Tab Next field  Enter Confirm  Esc Cancel                   │
-└─────────────────────────────────────────────────────────────┘
-```
-
-**编辑限制：**
-
-- Provider 不可修改（需要删除重建）
-- API Key 默认显示圆点，点击 `[Change]` 后可输入新值
-- 留空表示保持原值
+**交互修复：**
+- 进入表单后 `formFocus=1`，`formName` 自动 Focus（provider 已预选）
+- Tab/Shift+Tab 循环切换字段
 
 ---
 
@@ -230,64 +222,31 @@ agx claude --dangerously-skip-permissions  # 透传长参数
 ```text
 ┌─────────────────────────────────────────────────────────────┐
 │                                                             │
-│   ⚠ DELETE KEY                                              │
+│   DELETE KEY                                                │
 │                                                             │
 │   Are you sure you want to delete "my-claude-key"?          │
 │                                                             │
 │   This action cannot be undone.                             │
 │                                                             │
-│              [ Delete ]         [ Cancel ]                  │
+│              [ Cancel ]         [ Delete ]                  │
 │                                                             │
 └─────────────────────────────────────────────────────────────┘
 ```
 
-- 居中弹窗（Modal）
 - 默认焦点在 `Cancel` 上（防误删）
 - `Enter` 执行当前按钮，`Esc` 取消
 
 ---
 
-### 5.5 搜索模式
-
-按 `/` 进入搜索模式：
-
-```text
-┌─────────────────────────────────────────────────────────────┐
-│  KEY MANAGER                              Search: cache_    │
-├─────────────────────────────────────────────────────────────┤
-│                                                             │
-│  Search results for "cache":                                │
-│  ────────────────────────────────────────────────────────   │
-│  > * my-claude-key     [cache], code        Claude          │
-│      work-key          [cache]              OpenAI          │
-│                                                             │
-│  (2 keys found)                                             │
-│                                                             │
-├─────────────────────────────────────────────────────────────┤
-│ Enter Select  Esc Clear search  ↑↓ Navigate                 │
-└─────────────────────────────────────────────────────────────┘
-```
-
-- 实时过滤（按名称和标签匹配）
-- 高亮匹配的文本
-- `Esc` 清除搜索，返回完整列表
-
----
-
-### 5.6 CLI 命令支持
-
-除了 TUI，也提供 CLI 命令：
+### 5.5 CLI 命令支持
 
 ```bash
 # 列出所有 Key
 agx keys ls
 agx keys ls --provider claude
 
-# 添加 Key（交互式）
-agx keys add
-
 # 添加 Key（非交互）
-agx keys add --provider claude --name my-key --key sk-xxx --tags cache,code
+agx keys add --provider claude --name my-key --key sk-xxx [--base-url https://...] [--tags cache,code]
 
 # 激活 Key
 agx keys activate <key-id-or-name>
@@ -295,16 +254,38 @@ agx keys activate <key-id-or-name>
 # 删除 Key
 agx keys delete <key-id-or-name>
 
-# 导出（不含实际密钥，仅元数据）
-agx keys export > keys-meta.yaml
-
 # 进入 Key 管理 TUI
 agx keys
 ```
 
 ---
 
-## 六、主题设计 (Catppuccin Mocha)
+## 六、Agent 定义
+
+```go
+type Agent struct {
+    Name          string
+    Command       string
+    EnvVar        string // API Key 环境变量
+    BaseURLEnvVar string // Base URL 环境变量
+    Provider      string
+}
+
+// DefaultAgents returns the list of supported AI CLI tools
+func DefaultAgents() []Agent {
+    return []Agent{
+        {Name: "claude-code", Command: "claude", EnvVar: "ANTHROPIC_API_KEY", BaseURLEnvVar: "ANTHROPIC_BASE_URL", Provider: "claude"},
+        {Name: "codex-cli",   Command: "codex",  EnvVar: "OPENAI_API_KEY",    BaseURLEnvVar: "OPENAI_API_BASE",    Provider: "openai"},
+        {Name: "gemini-cli",  Command: "gemini", EnvVar: "GOOGLE_API_KEY",    BaseURLEnvVar: "GEMINI_BASE_URL",    Provider: "gemini"},
+    }
+}
+```
+
+Launch 时若 `activeKey.BaseURL != ""`，额外注入 `agent.BaseURLEnvVar` 环境变量。
+
+---
+
+## 七、主题设计 (Catppuccin Mocha)
 
 ```text
 颜色系统:
@@ -328,47 +309,6 @@ agx keys
 
 ---
 
-## 七、核心代码结构
-
-```go
-// cmd/agx/main.go
-func main() {
-    if len(os.Args) == 1 {
-        // 无参数 → TUI Dashboard
-        runDashboard()
-        return
-    }
-
-    switch os.Args[1] {
-    case "keys":
-        runKeyManager()
-    case "ls":
-        listSessions()
-    case "attach", "a":
-        attachSession(os.Args[2])
-    case "kill":
-        killSession(os.Args[2])
-    default:
-        // 假设是 agent 名字
-        launchAgent(os.Args[1], os.Args[2:])
-    }
-}
-
-// launchAgent 在当前目录启动，透传参数
-func launchAgent(agent string, args []string) {
-    dir, _ := os.Getwd()
-    cfg := SessionConfig{
-        Agent:   agent,
-        Dir:     dir,
-        Command: buildCommand(agent, args), // claude -c
-        EnvVars: getEnvForAgent(agent),
-    }
-    orch.Launch(cfg)
-}
-```
-
----
-
 ## 八、验证方案
 
 1. **CLI 流程测试**
@@ -377,10 +317,13 @@ func launchAgent(agent string, args []string) {
    - `agx ls` 显示会话列表
 
 2. **TUI 测试**
-   - `agx` 进入 Dashboard，显示会话列表
-   - Enter 可 attach 已有会话
-   - 数字键可快速启动新会话
+   - `agx` 进入 Dashboard，无 session 时显示引导
+   - Key Manager j/k 在 provider 间导航
+   - 按 `a` 进入 form，provider 预选正确
+   - Tab 切换字段，textinput 正常工作
+   - BaseURL 字段可输入，launch 时注入环境变量
 
 3. **边界情况**
-   - 无会话时 Dashboard 显示空状态
+   - 无会话时 Dashboard 显示 "Press K to manage keys"
    - Agent 无 Key 时显示提示
+   - BaseURL 为空时不注入环境变量

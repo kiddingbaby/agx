@@ -29,7 +29,8 @@ type Key struct {
 	ID        string    `yaml:"id"`
 	Provider  Provider  `yaml:"provider"`
 	Name      string    `yaml:"name"`
-	APIKey    string    `yaml:"api_key"` // encrypted
+	APIKey    string    `yaml:"api_key"`            // encrypted
+	BaseURL   string    `yaml:"base_url,omitempty"` // plaintext, optional
 	Tags      []string  `yaml:"tags,omitempty"`
 	Active    bool      `yaml:"active"`
 	CreatedAt time.Time `yaml:"created_at"`
@@ -59,7 +60,7 @@ func NewStore(path string, secret []byte) (*Store, error) {
 }
 
 // Add adds a new key
-func (s *Store) Add(provider Provider, name, apiKey string, tags []string) (*Key, error) {
+func (s *Store) Add(provider Provider, name, apiKey, baseURL string, tags []string) (*Key, error) {
 	encrypted, err := s.encrypt(apiKey)
 	if err != nil {
 		return nil, err
@@ -69,6 +70,7 @@ func (s *Store) Add(provider Provider, name, apiKey string, tags []string) (*Key
 		Provider:  provider,
 		Name:      name,
 		APIKey:    encrypted,
+		BaseURL:   baseURL,
 		Tags:      tags,
 		Active:    false,
 		CreatedAt: time.Now(),

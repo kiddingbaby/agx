@@ -100,6 +100,11 @@ func launchAgentFromTUI(orch *session.Orchestrator, store *key.Store, agent tui.
 		},
 	}
 
+	// Inject Base URL if set
+	if activeKey.BaseURL != "" && agent.BaseURLEnvVar != "" {
+		cfg.EnvVars[agent.BaseURLEnvVar] = activeKey.BaseURL
+	}
+
 	if err := orch.Launch(cfg); err != nil {
 		fmt.Fprintf(os.Stderr, "Error launching session: %v\n", err)
 		os.Exit(1)
