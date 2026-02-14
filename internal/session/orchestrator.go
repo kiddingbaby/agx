@@ -56,7 +56,8 @@ func escapeForShell(value string) string {
 	return b.String()
 }
 
-// Launch creates or attaches to a tmux session
+// Launch creates or attaches to a tmux session.
+// Secrets are injected via tmux session environment, not shell command exports.
 func (o *Orchestrator) Launch(cfg SessionConfig) error {
 	// Validate directory exists
 	if _, err := os.Stat(cfg.Dir); err != nil {
@@ -66,59 +67,62 @@ func (o *Orchestrator) Launch(cfg SessionConfig) error {
 	sessionName := fmt.Sprintf("ai-%s", cfg.Agent)
 	windowName := filepath.Base(cfg.Dir)
 
-	// Build environment export string with proper escaping
-	// Sort keys for deterministic output
-	var envExports []string
-	keys := make([]string, 0, len(cfg.EnvVars))
-	for k := range cfg.EnvVars {
-		keys = append(keys, k)
-	}
-	sort.Strings(keys)
-
-	for _, k := range keys {
-		v := cfg.EnvVars[k]
-		envExports = append(envExports, fmt.Sprintf("export %s=%s", k, escapeForShell(v)))
-	}
-	envStr := strings.Join(envExports, " && ")
-
-	// Build the command to run
-	shellCmd := cfg.Command
-	if envStr != "" {
-		shellCmd = envStr + " && " + cfg.Command
-	}
-
-	// Check if session exists
-	// Note: hasSession + create has potential race condition but is acceptable
-	// for this use case since sessions are user-initiated
+	// Check if session exists.
 	if o.hasSession(sessionName) {
-		// Create new window in existing session
+		if err := o.setSessionEnv(sessionName, cfg.EnvVars); err != nil {
+			return fmt.Errorf("failed to set session env: %w", err)
+		}
+		// Create new window in existing session.
 		args := []string{
 			"new-window",
 			"-t", sessionName,
 			"-n", windowName,
 			"-c", cfg.Dir,
-			shellCmd,
+			cfg.Command,
 		}
 		if err := o.run(args...); err != nil {
 			return fmt.Errorf("failed to create window: %w", err)
 		}
 	} else {
-		// Create new session
+		// Create detached session first, then inject env and start command.
 		args := []string{
 			"new-session",
 			"-d",
 			"-s", sessionName,
 			"-n", windowName,
 			"-c", cfg.Dir,
-			shellCmd,
 		}
 		if err := o.run(args...); err != nil {
 			return fmt.Errorf("failed to create session: %w", err)
+		}
+		if err := o.setSessionEnv(sessionName, cfg.EnvVars); err != nil {
+			return fmt.Errorf("failed to set session env: %w", err)
+		}
+		paneTarget := fmt.Sprintf("%s:%s.0", sessionName, windowName)
+		if err := o.run("respawn-pane", "-k", "-t", paneTarget, "-c", cfg.Dir, cfg.Command); err != nil {
+			return fmt.Errorf("failed to start command in pane: %w", err)
 		}
 	}
 
 	// Attach to session
 	return o.Attach(sessionName)
+}
+
+func (o *Orchestrator) setSessionEnv(sessionName string, env map[string]string) error {
+	if len(env) == 0 {
+		return nil
+	}
+	keys := make([]string, 0, len(env))
+	for k := range env {
+		keys = append(keys, k)
+	}
+	sort.Strings(keys)
+	for _, k := range keys {
+		if err := o.run("set-environment", "-t", sessionName, k, env[k]); err != nil {
+			return err
+		}
+	}
+	return nil
 }
 
 func (o *Orchestrator) hasSession(name string) bool {

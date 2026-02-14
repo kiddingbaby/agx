@@ -32,15 +32,15 @@ sudo mv agx /usr/local/bin/
 
 ## 快速开始
 
-### 1. 设置加密密钥
+### 1. 初始化（默认自动托管 secret）
 
 ```bash
-# 生成 32 字节密钥
-export AGX_SECRET=$(openssl rand -base64 32 | head -c 32)
-
-# 添加到 shell 配置
-echo "export AGX_SECRET='$AGX_SECRET'" >> ~/.bashrc
+# 首次运行会自动生成并保存：
+# ~/.config/agx/secret (0600)
+agx --help >/dev/null
 ```
+
+可选：如果你希望覆盖默认 secret，可手动设置 `AGX_SECRET`（必须是 32 字节）。
 
 ### 2. 添加 API Key
 
@@ -52,6 +52,8 @@ echo "export AGX_SECRET='$AGX_SECRET'" >> ~/.bashrc
 | `d` | 删除 Key |
 | `Enter` | 激活 Key |
 | `Esc` | 返回 |
+
+说明：AGX 会在启动 agent 时自动注入所需环境变量（如 `OPENAI_API_KEY`），无需手动修改 `~/.bashrc`/`~/.zshrc`。
 
 ### 3. 启动会话
 
@@ -117,13 +119,14 @@ Ctrl+b d
 
 | 变量 | 说明 | 必需 |
 |------|------|------|
-| `AGX_SECRET` | 32 字节加密密钥 | ✅ |
+| `AGX_SECRET` | 32 字节加密密钥（可选覆盖） | ❌ |
 
 ### 数据存储
 
 ```
 ~/.config/agx/
-└── keys.yaml    # 加密的 API Key 存储
+├── keys.yaml    # 加密的 API Key 存储
+└── secret       # 自动生成的 32 字节主密钥 (0600)
 ```
 
 ## 支持的 AI CLI
@@ -149,11 +152,11 @@ tmux -V
 ### API Key 解密失败
 
 ```bash
-# 确保 AGX_SECRET 已设置
-echo $AGX_SECRET | wc -c  # 应该是 32 或 33 (含换行)
+# 1) 优先检查自动托管 secret 是否存在
+ls -l ~/.config/agx/secret
 
-# 重新生成密钥（会导致已有 Key 无法解密）
-export AGX_SECRET=$(openssl rand -base64 32 | head -c 32)
+# 2) 如手动设置 AGX_SECRET，长度必须为 32
+echo -n "$AGX_SECRET" | wc -c
 ```
 
 ### TUI 显示异常

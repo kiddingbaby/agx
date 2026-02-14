@@ -1,6 +1,11 @@
 package tui
 
-import "testing"
+import (
+	"testing"
+	"time"
+
+	"github.com/kiddingbaby/agx/internal/key"
+)
 
 func TestTruncate(t *testing.T) {
 	tests := []struct {
@@ -40,16 +45,22 @@ func TestTruncate(t *testing.T) {
 			want:  "",
 		},
 		{
-			name:  "unicode bytes",
+			name:  "unicode fits in rune count",
 			input: "你好世界",
-			max:   12, // 4 chars * 3 bytes = 12 bytes
+			max:   12,
+			want:  "你好世界",
+		},
+		{
+			name:  "unicode fits exactly",
+			input: "你好世界",
+			max:   4,
 			want:  "你好世界",
 		},
 		{
 			name:  "unicode truncated",
-			input: "你好世界",
-			max:   6,      // 2 chars * 3 bytes = 6 bytes, but len("你好世界") = 12 > 6
-			want:  "你...", // truncate works on bytes: s[:3] = "你"
+			input: "你好世界测试",
+			max:   5,
+			want:  "你好...",
 		},
 	}
 
@@ -128,5 +139,17 @@ func TestDefaultAgents(t *testing.T) {
 		if agents[i].Provider != exp.provider {
 			t.Errorf("agents[%d].Provider = %v, want %v", i, agents[i].Provider, exp.provider)
 		}
+	}
+}
+
+func TestDisplayDate(t *testing.T) {
+	created := time.Date(2026, 1, 1, 0, 0, 0, 0, time.UTC)
+	updated := time.Date(2026, 2, 1, 0, 0, 0, 0, time.UTC)
+
+	if got := displayDate(key.Key{CreatedAt: created}); !got.Equal(created) {
+		t.Fatalf("displayDate(created only) = %v, want %v", got, created)
+	}
+	if got := displayDate(key.Key{CreatedAt: created, UpdatedAt: updated}); !got.Equal(updated) {
+		t.Fatalf("displayDate(with updated) = %v, want %v", got, updated)
 	}
 }
