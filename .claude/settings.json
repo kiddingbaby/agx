@@ -8,6 +8,33 @@
             "type": "command",
             "command": "~/.claude/skills/workflow/scripts/hook-require-spec.sh",
             "timeout": 5000
+          },
+          {
+            "type": "command",
+            "command": "~/.claude/skills/workflow/scripts/hooks/block-main.sh",
+            "timeout": 5000
+          }
+        ]
+      },
+      {
+        "matcher": "Edit|Write|Bash",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "~/.claude/skills/workflow/scripts/hooks/phase-guard.sh",
+            "timeout": 5000
+          }
+        ]
+      }
+    ],
+    "UserPromptSubmit": [
+      {
+        "matcher": "",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "~/.claude/skills/workflow/scripts/hooks/phase-auto.sh",
+            "timeout": 5000
           }
         ]
       }

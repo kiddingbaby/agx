@@ -1,329 +1,162 @@
-# AGX UX 设计文档
+# AGX V1 设计文档（Key 交互 + Env 托管）
 
-> AGX = **AI CLI Session Orchestrator**
-> 目标：CLI 优先、最小操作成本、多会话并行、Power User 取向
+## Problem
 
----
+当前要解决的核心问题：
 
-## 一、核心设计原则
+1. `key` 管理缺少完整 CRUD（特别是 Edit），用户需要快速键盘操作。
+2. 环境变量使用体验不友好，用户不希望修改 `~/.bashrc`/`~/.zshrc` 等系统环境文件。
+3. 交互风格需要统一，是否全局 Vim 风格需要明确策略。
 
-**当前痛点（已解决）：**
+用户价值目标（V1）：
 
-```text
-旧流程: agx → 选 Agent → 选目录 → 启动
-              ↑          ↑
-              多余！      多余！
-```
-
-**新设计理念：**
-
-- 类似 tmux attach 的快速模式
-- 默认当前目录，无需选择
-- 支持透传 CLI 参数（如 `claude -c`）
-- TUI 仅用于复杂管理场景
+1. 30 秒内完成 key 新增并可立即启动 agent。
+2. 启动时由 AGX 自动注入所需 env，不要求用户手工 `export`。
+3. 全流程键盘可达，低误操作（尤其 Delete）。
 
 ---
 
-## 二、使用模式
+## Architecture
 
-### CLI 优先（日常使用）
+### 1. Key 管理交互架构
 
-```bash
-# 快速启动（当前目录）
-agx claude              # 在 cwd 启动 claude-code
-agx claude -c           # 透传 -c 给 claude CLI
-agx claude -r           # 透传 -r
-agx codex               # 启动 codex-cli
+采用三态模型：`List` / `Form(Add|Edit)` / `Confirm(Delete)`。
 
-# 会话管理（类似 tmux）
-agx ls                  # 列出所有 AI 会话
-agx attach claude       # 切换到 ai-claude 会话
-agx a claude            # attach 简写
-agx kill claude         # 终止会话
-```
+#### List（主界面）
 
-### TUI 模式（复杂管理）
+- Provider 分组展示（Claude/OpenAI/Gemini）。
+- 行类型：`provider header` + `key item`。
+- 显示字段：`active`、`name`、`tags`、`updated_at`。
+- 支持快速过滤：`/` 进入搜索（按 name/tag/provider）。
 
-```bash
-agx                     # 进入 Session Dashboard
-agx keys                # 进入 Key 管理
-agx --tui               # 强制进入完整 TUI
-```
+关键操作：
 
----
+- `a`：新增（默认继承当前 provider）。
+- `e`：编辑（进入 Form，回填现有值）。
+- `Enter`：设为 active。
+- `d`：删除（进入 Confirm）。
+- `/`：搜索过滤。
 
-## 三、命令解析逻辑
+#### Form（新增/编辑共用）
 
-```go
-agx                     → TUI Dashboard
-agx keys                → TUI Key Manager
-agx ls                  → CLI: 列出会话
-agx attach <name>       → CLI: 切换会话
-agx a <name>            → CLI: attach 简写
-agx kill <name>         → CLI: 终止会话
-agx <agent> [args...]   → CLI: 启动 session（当前目录）
-```
+字段顺序：
 
-### 参数透传
+1. Provider（新增可改，编辑默认锁定或二次确认）
+2. Name（必填）
+3. Base URL（可选）
+4. API Key（必填；编辑时支持“保持原值”）
+5. Tags（可选）
 
-```bash
-agx claude -c           # 实际执行: claude -c
-agx claude --dangerously-skip-permissions  # 透传长参数
-```
+表单策略：
 
----
+- 新增默认聚焦 `Name`，减少无效跳转。
+- 编辑回填，`API Key` 默认留空表示不改动。
+- 保存时做最小校验：必填、Provider 合法、URL 格式。
 
-## 四、Session Dashboard (TUI)
+#### Confirm（删除确认）
 
-当 `agx` 无参数时进入，显示所有会话：
+- 默认焦点 `Cancel`，防误删。
+- 文案展示 `provider/name`。
+- 二次确认策略：V1 使用显式确认弹窗；暂不做 Undo 队列（复杂度高）。
 
-```text
-┌─────────────────────────────────────────────────────────────┐
-│  AGX SESSION DASHBOARD                           [K]eys    │
-├─────────────────────────────────────────────────────────────┤
-│                                                             │
-│  ACTIVE SESSIONS                                            │
-│  ─────────────────────────────────────────────────────────  │
-│  > ai-claude      ~/projects/agx        2 windows           │
-│    ai-codex       ~/projects/blog       1 window            │
-│                                                             │
-│  QUICK START                                                │
-│  ─────────────────────────────────────────────────────────  │
-│    [1] claude-code  ✓                                       │
-│    [2] codex-cli    ✗ (no key)                              │
-│    [3] gemini-cli   ✗ (no key)                              │
-│                                                             │
-├─────────────────────────────────────────────────────────────┤
-│ Enter Attach  n New  d Delete  K Keys  q Quit               │
-└─────────────────────────────────────────────────────────────┘
-```
+### 2. 统一键位策略（Vim + 通用双轨）
 
-**布局说明：**
+结论：**全界面支持 Vim 风格，但不强制仅 Vim。**
 
-- **上半部分**：已有会话列表（Enter 可 attach）
-- **下半部分**：快速启动（数字键直接启动）
-- **焦点默认在已有会话**：方便快速 attach
-- **空会话时引导**：显示 "Press K to manage keys, or 1-3 to launch"
+- Vim：`j/k` 上下，`h/l` 左右，`gg/G` 首尾，`/` 搜索，`Esc` 返回。
+- 通用：方向键、`Tab/Shift+Tab`、`Enter` 保持可用。
 
----
+理由：
 
-## 五、Key 管理完整设计
+1. 满足 power user 效率诉求。
+2. 不牺牲新用户可用性。
+3. 降低“必须会 Vim”门槛，减少支持成本。
 
-### 5.1 Key 数据模型
+### 3. Env 注入架构（完全由 AGX 托管）
 
-```go
-type Key struct {
-    ID        string    `yaml:"id"`
-    Provider  Provider  `yaml:"provider"`
-    Name      string    `yaml:"name"`
-    APIKey    string    `yaml:"api_key"`            // AES-GCM 加密
-    BaseURL   string    `yaml:"base_url,omitempty"` // 明文，可选
-    Tags      []string  `yaml:"tags,omitempty"`
-    Active    bool      `yaml:"active"`
-    CreatedAt time.Time `yaml:"created_at"`
-}
-```
+设计目标：用户无需修改系统环境变量文件。
 
-**BaseURL 映射（参见 CLI_ENV.md）：**
+#### 配置与密钥来源
 
-| Provider | API Key 环境变量 | Base URL 环境变量 |
-|----------|------------------|-------------------|
-| Claude   | `ANTHROPIC_API_KEY` | `ANTHROPIC_BASE_URL` |
-| OpenAI   | `OPENAI_API_KEY` | `OPENAI_API_BASE` |
-| Gemini   | `GOOGLE_API_KEY` | `GEMINI_BASE_URL` |
+1. API Key / Base URL 存储：`~/.config/agx/keys.yaml`（API Key 加密）。
+2. 加密主密钥：`~/.config/agx/secret` 自动生成并 `0600`。
+3. `AGX_SECRET` 仅作为可选覆盖，不再作为默认前置步骤。
 
-### 5.2 Key 列表页（主页面）
+#### 运行时注入
 
-```text
-┌─────────────────────────────────────────────────────────────┐
-│  KEY MANAGER                                     [Esc] Back │
-├─────────────────────────────────────────────────────────────┤
-│                                                             │
-│  CLAUDE                                                     │
-│  ────────────────────────────────────────────────────────   │
-│  > * my-claude-key     cache, code           2026-02-04     │
-│      backup-key        -                     2026-01-15     │
-│                                                             │
-│  OPENAI                                                     │
-│  ────────────────────────────────────────────────────────   │
-│    (no keys - press 'a' to add)                             │
-│                                                             │
-│  GEMINI                                                     │
-│  ────────────────────────────────────────────────────────   │
-│    (no keys - press 'a' to add)                             │
-│                                                             │
-├─────────────────────────────────────────────────────────────┤
-│ Enter Activate  a Add  d Delete  Esc Back                   │
-└─────────────────────────────────────────────────────────────┘
-```
+- 启动 agent 时，AGX 从 active key 组装 env map：
+  - Claude: `ANTHROPIC_API_KEY` / `ANTHROPIC_BASE_URL`
+  - OpenAI: `OPENAI_API_KEY` / `OPENAI_API_BASE`
+  - Gemini: `GOOGLE_API_KEY` / `GEMINI_BASE_URL`
+- 注入范围为 AGX 启动的 agent 会话，不污染用户全局 shell 环境。
 
-**导航设计：**
+#### 安全改进（必须落地）
 
-- `keyRows` 包含 provider header 行 + key 行
-- Provider header 可选中（`keyIdx=-1`），用于确定 `a` 新增时的 provider
-- j/k 在所有可选行间移动（包括 provider header）
-- 按 `a` 时根据当前光标所在 provider 预选表单
+当前实现通过 `export KEY=... && cmd` 拼接命令，有明文暴露风险（进程参数/调试输出）。
 
-**操作说明：**
+V1 要求改为：
 
-| 按键 | 操作 |
-|------|------|
-| `↑↓/jk` | 上下导航（含 provider header） |
-| `Enter` | 激活选中的 Key |
-| `a` | 添加新 Key（预选当前 provider） |
-| `d` | 删除选中的 Key（需确认）|
-| `Esc` | 返回 Dashboard |
+1. 避免把明文密钥拼进命令行字符串。
+2. 使用 tmux 原生环境注入能力（可用时）或等价安全方案。
+3. 日志和错误信息默认脱敏（仅显示前后少量字符）。
 
 ---
 
-### 5.3 添加 Key 页面
+## Implementation
 
-```text
-┌─────────────────────────────────────────────────────────────┐
-│  ADD KEY                                                    │
-├─────────────────────────────────────────────────────────────┤
-│                                                             │
-│  Provider:  < claude >                                      │
-│                                                             │
-│  Name:      [ my-new-key_________________ ]                 │
-│                                                             │
-│  Base URL:  [ https://api.anthropic.com__ ]                 │
-│             (optional, leave empty for default)             │
-│                                                             │
-│  API Key:   [ ******************************** ]            │
-│             (will be encrypted)                             │
-│                                                             │
-│  Tags:      [ cache, code________________ ]                 │
-│             (comma separated, optional)                     │
-│                                                             │
-├─────────────────────────────────────────────────────────────┤
-│ Tab Next field  Shift+Tab Previous  Enter Save  Esc Cancel  │
-└─────────────────────────────────────────────────────────────┘
-```
+### 1. 功能优先级（V1 生产）
 
-**字段顺序（formFocus 0-4）：**
+P0（必须）：
 
-| # | 字段 | 必填 | 说明 |
-|---|------|------|------|
-| 0 | Provider | ✓ | h/l 切换：Claude / OpenAI / Gemini |
-| 1 | Name | ✓ | 自定义名称 |
-| 2 | Base URL | - | 可选，按 provider 显示 placeholder |
-| 3 | API Key | ✓ | 密码遮罩，加密存储 |
-| 4 | Tags | - | 逗号分隔标签 |
+1. Key `Add/Edit/Delete/Activate/List` 完整闭环。
+2. 双轨键位（Vim + 通用）在 Dashboard/KeyMgr/Form/Confirm 全覆盖。
+3. AGX 托管 env 注入，默认不需要改 shell 配置文件。
+4. 启动链路安全注入（不明文拼接 secret 到命令行）。
+5. 关键错误提示可行动（例如“无 active key，按 K 去配置”）。
 
-**交互修复：**
-- 进入表单后 `formFocus=1`，`formName` 自动 Focus（provider 已预选）
-- Tab/Shift+Tab 循环切换字段
+P1（建议）：
 
----
+1. Key 搜索/过滤与 tags 管理优化。
+2. `agx keys edit` CLI 子命令（非交互）。
+3. 启动前 env preview（值脱敏）用于排障。
 
-### 5.4 删除确认
+P2（后续）：
 
-```text
-┌─────────────────────────────────────────────────────────────┐
-│                                                             │
-│   DELETE KEY                                                │
-│                                                             │
-│   Are you sure you want to delete "my-claude-key"?          │
-│                                                             │
-│   This action cannot be undone.                             │
-│                                                             │
-│              [ Cancel ]         [ Delete ]                  │
-│                                                             │
-└─────────────────────────────────────────────────────────────┘
-```
+1. 项目级 profile（同 provider 多环境切换）。
+2. 外部 Secret Manager 对接（1Password/Vault/KMS）。
 
-- 默认焦点在 `Cancel` 上（防误删）
-- `Enter` 执行当前按钮，`Esc` 取消
+### 2. 用户故事（验收口径）
 
----
+1. 作为开发者，我可以在 `agx keys` 里只用键盘完成 key 新增/编辑/删除。
+2. 作为开发者，我执行 `agx claude` 时不需要预先改 `~/.bashrc`，也能自动带上正确 key。
+3. 作为开发者，我可以统一使用 `hjkl` 在所有界面操作，同时方向键也可工作。
+4. 作为维护者，我不能在日志或命令行参数中看到完整 API Key。
 
-### 5.5 CLI 命令支持
+### 3. 非目标（V1 不做）
 
-```bash
-# 列出所有 Key
-agx keys ls
-agx keys ls --provider claude
+1. 多人协作密钥共享与权限模型。
+2. 云端同步与远程密钥托管。
+3. 删除后可恢复（Undo/Trash）机制。
 
-# 添加 Key（非交互）
-agx keys add --provider claude --name my-key --key sk-xxx [--base-url https://...] [--tags cache,code]
+### 4. 约束与风险
 
-# 激活 Key
-agx keys activate <key-id-or-name>
+约束：
 
-# 删除 Key
-agx keys delete <key-id-or-name>
+1. 技术栈保持 Go + Bubble Tea + tmux。
+2. 保持现有 keys 存储格式可兼容迁移。
 
-# 进入 Key 管理 TUI
-agx keys
-```
+风险：
 
----
+1. tmux 版本差异导致环境注入能力不一致。
+2. Edit 语义若处理不清，可能误覆盖 API Key。
 
-## 六、Agent 定义
+缓解：
 
-```go
-type Agent struct {
-    Name          string
-    Command       string
-    EnvVar        string // API Key 环境变量
-    BaseURLEnvVar string // Base URL 环境变量
-    Provider      string
-}
+1. 启动时探测 tmux 能力并降级。
+2. Edit 表单中“空 API Key = 保持不变”并加明确提示。
 
-// DefaultAgents returns the list of supported AI CLI tools
-func DefaultAgents() []Agent {
-    return []Agent{
-        {Name: "claude-code", Command: "claude", EnvVar: "ANTHROPIC_API_KEY", BaseURLEnvVar: "ANTHROPIC_BASE_URL", Provider: "claude"},
-        {Name: "codex-cli",   Command: "codex",  EnvVar: "OPENAI_API_KEY",    BaseURLEnvVar: "OPENAI_API_BASE",    Provider: "openai"},
-        {Name: "gemini-cli",  Command: "gemini", EnvVar: "GOOGLE_API_KEY",    BaseURLEnvVar: "GEMINI_BASE_URL",    Provider: "gemini"},
-    }
-}
-```
+### 5. 里程碑建议
 
-Launch 时若 `activeKey.BaseURL != ""`，额外注入 `agent.BaseURLEnvVar` 环境变量。
-
----
-
-## 七、主题设计 (Catppuccin Mocha)
-
-```text
-颜色系统:
-├── 背景
-│   ├── BgPrimary:   #1e1e2e (深蓝灰)
-│   ├── BgSecondary: #313244 (次级背景)
-│   └── BgHighlight: #45475a (高亮背景)
-├── 前景
-│   ├── FgPrimary:   #cdd6f4 (主文本)
-│   ├── FgSecondary: #a6adc8 (次级文本)
-│   └── FgMuted:     #6c7086 (灰化文本)
-├── 语义色
-│   ├── Accent:      #89b4fa (蓝色强调)
-│   ├── Success:     #a6e3a1 (绿色成功)
-│   ├── Warning:     #f9e2af (黄色警告)
-│   └── Error:       #f38ba8 (红色错误)
-└── 边框
-    ├── Border:      #585b70 (普通边框)
-    └── BorderFocus: #89b4fa (聚焦边框)
-```
-
----
-
-## 八、验证方案
-
-1. **CLI 流程测试**
-   - `agx claude` 在当前目录启动
-   - `agx claude -c` 正确透传参数
-   - `agx ls` 显示会话列表
-
-2. **TUI 测试**
-   - `agx` 进入 Dashboard，无 session 时显示引导
-   - Key Manager j/k 在 provider 间导航
-   - 按 `a` 进入 form，provider 预选正确
-   - Tab 切换字段，textinput 正常工作
-   - BaseURL 字段可输入，launch 时注入环境变量
-
-3. **边界情况**
-   - 无会话时 Dashboard 显示 "Press K to manage keys"
-   - Agent 无 Key 时显示提示
-   - BaseURL 为空时不注入环境变量
+1. M1：交互补齐（`e` 编辑 + 全局键位一致性）。
+2. M2：安全 env 注入改造 + 脱敏日志。
+3. M3：CLI `keys edit` + 搜索过滤。
