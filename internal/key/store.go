@@ -34,6 +34,7 @@ type Key struct {
 	Tags      []string  `yaml:"tags,omitempty"`
 	Active    bool      `yaml:"active"`
 	CreatedAt time.Time `yaml:"created_at"`
+	UpdatedAt time.Time `yaml:"updated_at,omitempty"`
 }
 
 // Store manages key storage
@@ -65,6 +66,7 @@ func (s *Store) Add(provider Provider, name, apiKey, baseURL string, tags []stri
 	if err != nil {
 		return nil, err
 	}
+	now := time.Now()
 	key := Key{
 		ID:        uuid.New().String(),
 		Provider:  provider,
@@ -73,10 +75,55 @@ func (s *Store) Add(provider Provider, name, apiKey, baseURL string, tags []stri
 		BaseURL:   baseURL,
 		Tags:      tags,
 		Active:    false,
-		CreatedAt: time.Now(),
+		CreatedAt: now,
+		UpdatedAt: now,
 	}
 	s.Keys = append(s.Keys, key)
 	return &key, s.save()
+}
+
+// Update updates key fields in patch mode.
+// API key is only updated when apiKey is non-empty; other fields are always overwritten.
+func (s *Store) Update(id string, provider Provider, name, apiKey, baseURL string, tags []string) (*Key, error) {
+	for i, k := range s.Keys {
+		if k.ID != id {
+			continue
+		}
+
+		encrypted := k.APIKey
+		if apiKey != "" {
+			var err error
+			encrypted, err = s.encrypt(apiKey)
+			if err != nil {
+				return nil, err
+			}
+		}
+
+		s.Keys[i].Provider = provider
+		s.Keys[i].Name = name
+		s.Keys[i].APIKey = encrypted
+		s.Keys[i].BaseURL = baseURL
+		s.Keys[i].Tags = tags
+		s.Keys[i].UpdatedAt = time.Now()
+		if s.Keys[i].Active {
+			for j := range s.Keys {
+				if j != i && s.Keys[j].Provider == provider {
+					s.Keys[j].Active = false
+				}
+			}
+		}
+
+		if err := s.save(); err != nil {
+			return nil, err
+		}
+
+		updated := s.Keys[i]
+		if apiKey != "" {
+			updated.APIKey = apiKey
+		}
+		return &updated, nil
+	}
+	return nil, errors.New("key not found")
 }
 
 // Delete removes a key by ID
@@ -116,6 +163,17 @@ func (s *Store) Activate(id string) error {
 // List returns all keys (without decrypting API keys)
 func (s *Store) List() []Key {
 	return s.Keys
+}
+
+// HasActive returns true if there is an active key for the given provider.
+// Unlike GetActive, this does not decrypt the API key.
+func (s *Store) HasActive(provider Provider) bool {
+	for _, k := range s.Keys {
+		if k.Provider == provider && k.Active {
+			return true
+		}
+	}
+	return false
 }
 
 // GetActive returns the active key for a provider
@@ -180,7 +238,22 @@ func (s *Store) load() error {
 	if err != nil {
 		return err
 	}
-	return yaml.Unmarshal(data, s)
+	if err := yaml.Unmarshal(data, s); err != nil {
+		return err
+	}
+
+	// Backward compatibility: old entries may not have updated_at.
+	for i := range s.Keys {
+		if !s.Keys[i].UpdatedAt.IsZero() {
+			continue
+		}
+		if !s.Keys[i].CreatedAt.IsZero() {
+			s.Keys[i].UpdatedAt = s.Keys[i].CreatedAt
+		} else {
+			s.Keys[i].UpdatedAt = time.Now()
+		}
+	}
+	return nil
 }
 
 func (s *Store) save() error {

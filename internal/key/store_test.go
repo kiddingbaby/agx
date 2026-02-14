@@ -4,6 +4,7 @@ import (
 	"os"
 	"path/filepath"
 	"testing"
+	"time"
 )
 
 func TestNewStore(t *testing.T) {
@@ -516,5 +517,134 @@ func TestStoreCreatesDirectory(t *testing.T) {
 	// Verify file was created
 	if _, err := os.Stat(path); os.IsNotExist(err) {
 		t.Error("file not created in nested directory")
+	}
+}
+
+func TestStoreUpdatePatch(t *testing.T) {
+	secret := []byte("12345678901234567890123456789012")
+	tmpDir := t.TempDir()
+	path := filepath.Join(tmpDir, "keys.yaml")
+
+	store, err := NewStore(path, secret)
+	if err != nil {
+		t.Fatalf("NewStore() error = %v", err)
+	}
+
+	original, err := store.Add(ProviderClaude, "old-name", "old-key", "https://old.example", []string{"old"})
+	if err != nil {
+		t.Fatalf("Add() error = %v", err)
+	}
+	before := original.UpdatedAt
+
+	time.Sleep(10 * time.Millisecond)
+
+	updated, err := store.Update(
+		original.ID,
+		ProviderOpenAI,
+		"new-name",
+		"",
+		"https://new.example",
+		[]string{"new", "prod"},
+	)
+	if err != nil {
+		t.Fatalf("Update() error = %v", err)
+	}
+
+	if updated.Provider != ProviderOpenAI {
+		t.Fatalf("Provider = %v, want %v", updated.Provider, ProviderOpenAI)
+	}
+	if updated.Name != "new-name" {
+		t.Fatalf("Name = %q, want %q", updated.Name, "new-name")
+	}
+	if updated.BaseURL != "https://new.example" {
+		t.Fatalf("BaseURL = %q, want %q", updated.BaseURL, "https://new.example")
+	}
+	if len(updated.Tags) != 2 || updated.Tags[0] != "new" || updated.Tags[1] != "prod" {
+		t.Fatalf("Tags = %v, want [new prod]", updated.Tags)
+	}
+	if !updated.UpdatedAt.After(before) {
+		t.Fatalf("UpdatedAt not advanced: before=%v after=%v", before, updated.UpdatedAt)
+	}
+
+	// Empty apiKey means keep original key.
+	if err := store.Activate(original.ID); err != nil {
+		t.Fatalf("Activate() error = %v", err)
+	}
+	active, err := store.GetActive(ProviderOpenAI)
+	if err != nil {
+		t.Fatalf("GetActive() error = %v", err)
+	}
+	if active.APIKey != "old-key" {
+		t.Fatalf("APIKey = %q, want %q", active.APIKey, "old-key")
+	}
+}
+
+func TestStoreLoadLegacyMissingUpdatedAt(t *testing.T) {
+	secret := []byte("12345678901234567890123456789012")
+	tmpDir := t.TempDir()
+	path := filepath.Join(tmpDir, "keys.yaml")
+
+	legacy := `keys:
+  - id: legacy-1
+    provider: claude
+    name: legacy-key
+    api_key: Zm9v
+    active: false
+    created_at: 2026-01-02T03:04:05Z
+`
+	if err := os.WriteFile(path, []byte(legacy), 0600); err != nil {
+		t.Fatalf("WriteFile() error = %v", err)
+	}
+
+	store, err := NewStore(path, secret)
+	if err != nil {
+		t.Fatalf("NewStore() error = %v", err)
+	}
+	if len(store.Keys) != 1 {
+		t.Fatalf("expected 1 key, got %d", len(store.Keys))
+	}
+	want := time.Date(2026, 1, 2, 3, 4, 5, 0, time.UTC)
+	if !store.Keys[0].UpdatedAt.Equal(want) {
+		t.Fatalf("UpdatedAt = %v, want %v", store.Keys[0].UpdatedAt, want)
+	}
+}
+
+func TestStoreUpdateKeepsSingleActivePerProvider(t *testing.T) {
+	secret := []byte("12345678901234567890123456789012")
+	tmpDir := t.TempDir()
+	path := filepath.Join(tmpDir, "keys.yaml")
+
+	store, err := NewStore(path, secret)
+	if err != nil {
+		t.Fatalf("NewStore() error = %v", err)
+	}
+
+	key1, err := store.Add(ProviderClaude, "k1", "key-1", "", nil)
+	if err != nil {
+		t.Fatalf("Add key1 error = %v", err)
+	}
+	key2, err := store.Add(ProviderOpenAI, "k2", "key-2", "", nil)
+	if err != nil {
+		t.Fatalf("Add key2 error = %v", err)
+	}
+
+	if err := store.Activate(key1.ID); err != nil {
+		t.Fatalf("Activate key1 error = %v", err)
+	}
+	if err := store.Activate(key2.ID); err != nil {
+		t.Fatalf("Activate key2 error = %v", err)
+	}
+
+	// Move active key1 from Claude to OpenAI; only one OpenAI key should remain active.
+	if _, err := store.Update(key1.ID, ProviderOpenAI, "k1", "", "", nil); err != nil {
+		t.Fatalf("Update() error = %v", err)
+	}
+
+	activeOpenAI, err := store.GetActive(ProviderOpenAI)
+	if err != nil {
+		t.Fatalf("GetActive(OpenAI) error = %v", err)
+	}
+	if activeOpenAI.ID != key1.ID {
+		t.Fatalf("active OpenAI key = %s, want %s", activeOpenAI.ID, key1.ID)
 	}
 }

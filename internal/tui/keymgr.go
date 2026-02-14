@@ -3,6 +3,7 @@ package tui
 import (
 	"fmt"
 	"strings"
+	"time"
 
 	"github.com/charmbracelet/bubbles/textinput"
 	tea "github.com/charmbracelet/bubbletea"
@@ -31,9 +32,12 @@ type KeyManagerModel struct {
 	width      int
 	height     int
 	quitting   bool
-	switchBack bool // signal to switch back to dashboard
+	switchBack bool   // signal to switch back to dashboard
+	errMsg     string // error message to display in status bar
 
 	// Form state
+	formMode        string // add | edit
+	formEditingKey  string
 	formProviderIdx int
 	formName        textinput.Model
 	formBaseURL     textinput.Model
@@ -88,6 +92,7 @@ func (m KeyManagerModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case tea.WindowSizeMsg:
 		m.width = msg.Width
 		m.height = msg.Height
+		m.buildKeyRows()
 		return m, nil
 
 	case tea.KeyMsg:
@@ -105,7 +110,7 @@ func (m KeyManagerModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 }
 
 func (m KeyManagerModel) updateList(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
-	m.buildKeyRows()
+	m.errMsg = "" // clear error on any key press
 	k := msg.String()
 
 	switch k {
@@ -126,6 +131,12 @@ func (m KeyManagerModel) updateList(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		m.initForm(providerIdx)
 		m.view = KeyMgrViewForm
 		return m, textinput.Blink
+	case "e":
+		if m.cursor < len(m.keyRows) && m.keyRows[m.cursor].keyIdx >= 0 {
+			m.initEditForm(m.keyRows[m.cursor].keyIdx)
+			m.view = KeyMgrViewForm
+			return m, textinput.Blink
+		}
 	case "d":
 		if m.cursor < len(m.keyRows) && m.keyRows[m.cursor].keyIdx >= 0 {
 			m.confirmIdx = m.cursor
@@ -140,6 +151,9 @@ func (m KeyManagerModel) updateList(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 // buildKeyRows creates a flat list with provider headers and key entries.
 // Provider headers are always present so navigation works even with no keys.
 func (m *KeyManagerModel) buildKeyRows() {
+	// Dynamic column widths: active(2) + name + gap(2) + tags + gap(2) + date(10) + padding(6)
+	nameW, tagsW := m.colWidths()
+
 	m.keyRows = nil
 	for _, provider := range providers {
 		// Add provider header row (always selectable)
@@ -160,11 +174,11 @@ func (m *KeyManagerModel) buildKeyRows() {
 				if len(k.Tags) > 0 {
 					tagsStr = strings.Join(k.Tags, ", ")
 				}
-				display := fmt.Sprintf("%s%-20s  %-20s  %s",
+				display := fmt.Sprintf("%s%-*s  %-*s  %s",
 					active,
-					truncate(k.Name, 20),
-					truncate(tagsStr, 20),
-					k.CreatedAt.Format("2006-01-02"))
+					nameW, truncate(k.Name, nameW),
+					tagsW, truncate(tagsStr, tagsW),
+					displayDate(k).Format("2006-01-02"))
 				m.keyRows = append(m.keyRows, keyRow{keyIdx: i, provider: provider, display: display})
 			}
 		}
@@ -177,6 +191,28 @@ func (m *KeyManagerModel) buildKeyRows() {
 	if m.cursor < 0 {
 		m.cursor = 0
 	}
+}
+
+// colWidths returns dynamic name and tags column widths based on terminal width.
+func (m *KeyManagerModel) colWidths() (nameW, tagsW int) {
+	w := m.width
+	if w < 40 {
+		w = 80 // default before WindowSizeMsg
+	}
+	// Reserve: active(2) + gap(2) + gap(2) + date(10) + panel border/cursor(6) = 22
+	avail := w - 22
+	if avail < 20 {
+		avail = 20
+	}
+	nameW = avail * 2 / 5
+	tagsW = avail - nameW
+	if nameW < 10 {
+		nameW = 10
+	}
+	if tagsW < 10 {
+		tagsW = 10
+	}
+	return
 }
 
 func (m *KeyManagerModel) moveDown() {
@@ -213,10 +249,17 @@ func (m *KeyManagerModel) activateSelected() {
 		return
 	}
 	k := m.store.Keys[row.keyIdx]
-	m.store.Activate(k.ID)
+	if err := m.store.Activate(k.ID); err != nil {
+		m.errMsg = fmt.Sprintf("Activate failed: %v", err)
+		return
+	}
+	m.errMsg = ""
+	m.buildKeyRows()
 }
 
 func (m *KeyManagerModel) initForm(providerIdx int) {
+	m.formMode = "add"
+	m.formEditingKey = ""
 	m.formProviderIdx = providerIdx
 	m.formFocus = 1 // start on Name (provider already pre-selected)
 
@@ -244,7 +287,31 @@ func (m *KeyManagerModel) initForm(providerIdx int) {
 	m.formTags.Width = 30
 }
 
+func (m *KeyManagerModel) initEditForm(keyIdx int) {
+	if keyIdx < 0 || keyIdx >= len(m.store.Keys) {
+		return
+	}
+	k := m.store.Keys[keyIdx]
+	providerIdx := 0
+	for i, pn := range providerNames {
+		if key.Provider(pn) == k.Provider {
+			providerIdx = i
+			break
+		}
+	}
+
+	m.initForm(providerIdx)
+	m.formMode = "edit"
+	m.formEditingKey = k.ID
+	m.formName.SetValue(k.Name)
+	m.formBaseURL.SetValue(k.BaseURL)
+	m.formKey.SetValue("")
+	m.formKey.Placeholder = "(leave empty to keep unchanged)"
+	m.formTags.SetValue(strings.Join(k.Tags, ", "))
+}
+
 func (m KeyManagerModel) updateForm(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
+	m.errMsg = "" // clear error on any key press
 	k := msg.String()
 
 	switch k {
@@ -268,6 +335,9 @@ func (m KeyManagerModel) updateForm(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		}
 		// Try to save
 		m.saveForm()
+		if m.errMsg != "" {
+			return m, nil // stay on form, show error
+		}
 		m.view = KeyMgrViewList
 		return m, nil
 	}
@@ -322,7 +392,12 @@ func (m *KeyManagerModel) saveForm() {
 	baseURL := m.formBaseURL.Value()
 	tagsStr := m.formTags.Value()
 
-	if name == "" || apiKey == "" {
+	if name == "" {
+		m.errMsg = "Name is required"
+		return
+	}
+	if m.formMode == "add" && apiKey == "" {
+		m.errMsg = "API Key is required"
 		return
 	}
 
@@ -336,7 +411,19 @@ func (m *KeyManagerModel) saveForm() {
 	}
 
 	provider := key.Provider(providerNames[m.formProviderIdx])
-	m.store.Add(provider, name, apiKey, baseURL, tags)
+	if m.formMode == "edit" {
+		if _, err := m.store.Update(m.formEditingKey, provider, name, apiKey, baseURL, tags); err != nil {
+			m.errMsg = fmt.Sprintf("Save failed: %v", err)
+			return
+		}
+	} else {
+		if _, err := m.store.Add(provider, name, apiKey, baseURL, tags); err != nil {
+			m.errMsg = fmt.Sprintf("Save failed: %v", err)
+			return
+		}
+	}
+	m.errMsg = ""
+	m.buildKeyRows()
 }
 
 func (m KeyManagerModel) updateConfirm(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
@@ -356,6 +443,7 @@ func (m KeyManagerModel) updateConfirm(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 				if row.keyIdx >= 0 && row.keyIdx < len(m.store.Keys) {
 					k := m.store.Keys[row.keyIdx]
 					m.store.Delete(k.ID)
+					m.buildKeyRows()
 				}
 			}
 		}
@@ -431,20 +519,28 @@ func (m KeyManagerModel) viewList() string {
 		Height(m.height - 3).
 		Render(TitleStyle.Render(title) + "\n\n" + content)
 
-	bar := fmt.Sprintf(" %s │ %s Activate │ %s Add │ %s Delete │ %s Back",
+	bar := fmt.Sprintf(" %s │ %s Activate │ %s Add │ %s Edit │ %s Delete │ %s Back",
 		WarningStyle.Render("Keys"),
 		SuccessStyle.Render("Enter"),
 		SuccessStyle.Render("a"),
+		SuccessStyle.Render("e"),
 		SuccessStyle.Render("d"),
 		SuccessStyle.Render("Esc"),
 	)
+	if m.errMsg != "" {
+		bar = " " + ErrorStyle.Render(m.errMsg)
+	}
 	statusBar := StatusBarStyle.Width(m.width).Render(bar)
 
 	return lipgloss.JoinVertical(lipgloss.Left, panel, statusBar)
 }
 
 func (m KeyManagerModel) viewForm() string {
-	title := TitleStyle.Render(" ADD KEY ")
+	titleText := " ADD KEY "
+	if m.formMode == "edit" {
+		titleText = " EDIT KEY "
+	}
+	title := TitleStyle.Render(titleText)
 
 	providerDisplay := providerNames[m.formProviderIdx]
 	if m.formFocus == 0 {
@@ -483,6 +579,10 @@ func (m KeyManagerModel) viewForm() string {
 		focusLabel("Tags:", 4), m.formTags.View(),
 		MutedStyle.Render("Tab: next field │ Enter: save │ Esc: cancel"),
 	)
+
+	if m.errMsg != "" {
+		form += "\n\n  " + ErrorStyle.Render(m.errMsg)
+	}
 
 	panel := PanelFocusStyle.
 		Width(m.width - 2).
@@ -532,30 +632,31 @@ func (m KeyManagerModel) viewConfirm() string {
 		Render(dialog)
 }
 
-// truncate truncates a string to max length with ellipsis
+// truncate truncates a string to max rune length with ellipsis
 func truncate(s string, max int) string {
-	if len(s) <= max {
+	r := []rune(s)
+	if len(r) <= max {
 		return s
 	}
 	if max <= 3 {
-		return s[:max]
+		return string(r[:max])
 	}
-	return s[:max-3] + "..."
+	return string(r[:max-3]) + "..."
 }
 
 func splitTags(s string) []string {
 	var result []string
-	var current string
-	for _, c := range s {
-		if c == ',' {
-			result = append(result, strings.TrimSpace(current))
-			current = ""
-		} else {
-			current += string(c)
+	for _, part := range strings.Split(s, ",") {
+		if t := strings.TrimSpace(part); t != "" {
+			result = append(result, t)
 		}
 	}
-	if trimmed := strings.TrimSpace(current); trimmed != "" {
-		result = append(result, trimmed)
-	}
 	return result
+}
+
+func displayDate(k key.Key) time.Time {
+	if !k.UpdatedAt.IsZero() {
+		return k.UpdatedAt
+	}
+	return k.CreatedAt
 }
