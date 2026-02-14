@@ -5,9 +5,7 @@ import (
 	"os"
 	"strings"
 
-	"github.com/charmbracelet/bubbles/key"
 	"github.com/charmbracelet/bubbles/spinner"
-	"github.com/charmbracelet/bubbles/table"
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
 	ks "github.com/kiddingbaby/agx/internal/key"
@@ -340,8 +338,7 @@ func (m DashboardModel) renderStatusBar() string {
 }
 
 func (m DashboardModel) hasActiveKey(provider string) bool {
-	_, err := m.store.GetActive(ks.Provider(provider))
-	return err == nil
+	return m.store.HasActive(ks.Provider(provider))
 }
 
 // GetCwd returns the current working directory
@@ -352,9 +349,3 @@ func GetCwd() string {
 	}
 	return dir
 }
-
-// Ensure unused imports are used (table, key are used in keymgr)
-var (
-	_ = table.New
-	_ = key.NewBinding
-)
