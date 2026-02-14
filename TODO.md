@@ -32,59 +32,59 @@ Serial execution order (single-repo): 2 -> 3 -> 5 -> 6
 - Steps:
   - [x] coding    @ 2026-02-14 15:23:34 (919f437)
   - [x] tidy    @ 2026-02-14 15:28:31 (919f437)
-  - [ ] lint
-  - [ ] review
-  - [ ] test
-  - [ ] scan
+  - [x] lint    @ 2026-02-14 16:01:53 (512c8f7)
+  - [x] review    @ 2026-02-14 16:02:34 (512c8f7)
+  - [x] test    @ 2026-02-14 16:03:15 (512c8f7)
+  - [x] scan    @ 2026-02-14 16:03:39 (512c8f7)
   - [ ] pr
 
 ---
 
-### [3] pending - TUI KeyMgr 增加搜索过滤（/）与 gg/G 导航
+### [3] in_progress - TUI KeyMgr 增加搜索过滤（/）与 gg/G 导航
 
 - File: internal/tui/keymgr.go
 - Description: 增加过滤输入（按 name/tags/provider 过滤）；支持 `gg` 到首行、`G` 到末行；保持方向键与 Vim 双轨。
 - Dependencies: [2]
 - Steps:
-  - [ ] coding
-  - [ ] tidy
-  - [ ] lint
-  - [ ] review
-  - [ ] test
-  - [ ] scan
+  - [x] coding    @ 2026-02-14 16:09:48 (512c8f7)
+  - [x] tidy    @ 2026-02-14 16:09:48 (512c8f7)
+  - [x] lint    @ 2026-02-14 16:09:49 (512c8f7)
+  - [x] review    @ 2026-02-14 16:10:06 (512c8f7)
+  - [x] test    @ 2026-02-14 16:10:07 (512c8f7)
+  - [x] scan    @ 2026-02-14 16:10:07 (512c8f7)
   - [ ] pr
 
 ---
 
-### [4] pending - Session Orchestrator 改为安全 env 注入（不拼接 export）
+### [4] in_progress - Session Orchestrator 改为安全 env 注入（不拼接 export）
 
 - File: internal/session/orchestrator.go
 - Description: 移除 `export KEY=... && cmd` 拼接；改为 tmux session env + respawn-pane 启动；
   保证 pane 内命令不包含明文 secret；并限制 env 作用域到 `ai-<agent>` session。
 - Dependencies: []
 - Steps:
-  - [ ] coding
-  - [ ] tidy
-  - [ ] lint
-  - [ ] review
-  - [ ] test
-  - [ ] scan
+  - [x] coding    @ 2026-02-14 16:15:28 (512c8f7)
+  - [x] tidy    @ 2026-02-14 16:15:28 (512c8f7)
+  - [x] lint    @ 2026-02-14 16:15:29 (512c8f7)
+  - [x] review    @ 2026-02-14 16:15:56 (512c8f7)
+  - [x] test    @ 2026-02-14 16:15:56 (512c8f7)
+  - [x] scan    @ 2026-02-14 16:15:56 (512c8f7)
   - [ ] pr
 
 ---
 
-### [5] pending - 启动路径对齐（CLI/TUI）并补齐回归测试
+### [5] in_progress - 启动路径对齐（CLI/TUI）并补齐回归测试
 
 - File: cmd/agx/main.go
 - Description: 确保 CLI 与 TUI Launch 都走同一套安全注入逻辑；必要时调整 orchestrator 测试（escapeForShell 若降级为非关键）。
 - Dependencies: [4]
 - Steps:
-  - [ ] coding
-  - [ ] tidy
-  - [ ] lint
-  - [ ] review
-  - [ ] test
-  - [ ] scan
+  - [x] coding    @ 2026-02-14 16:16:44 (512c8f7)
+  - [x] tidy    @ 2026-02-14 16:16:44 (512c8f7)
+  - [x] lint    @ 2026-02-14 16:16:45 (512c8f7)
+  - [x] review    @ 2026-02-14 16:17:16 (512c8f7)
+  - [x] test    @ 2026-02-14 16:17:16 (512c8f7)
+  - [x] scan    @ 2026-02-14 16:17:16 (512c8f7)
   - [ ] pr
 
 ---
@@ -137,16 +137,16 @@ Serial execution order (single-repo): 2 -> 3 -> 5 -> 6
 
 ---
 
-### [6] pending - 文档更新：默认不要求设置 AGX_SECRET
+### [6] in_progress - 文档更新：默认不要求设置 AGX_SECRET
 
 - File: README.md
 - Description: 更新 quickstart，强调 secret 默认自动生成到 `~/.config/agx/secret`；AGX_SECRET 仅作为可选覆盖；说明 env 注入由 AGX 托管无需改 shell rc。
 - Dependencies: []
 - Steps:
-  - [ ] coding
-  - [ ] tidy
-  - [ ] lint
-  - [ ] review
-  - [ ] test
-  - [ ] scan
+  - [x] coding    @ 2026-02-14 16:17:45 (512c8f7)
+  - [x] tidy    @ 2026-02-14 16:17:45 (512c8f7)
+  - [x] lint    @ 2026-02-14 16:17:46 (512c8f7)
+  - [x] review    @ 2026-02-14 16:18:23 (512c8f7)
+  - [x] test    @ 2026-02-14 16:18:23 (512c8f7)
+  - [x] scan    @ 2026-02-14 16:18:23 (512c8f7)
   - [ ] pr

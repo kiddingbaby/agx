@@ -34,6 +34,9 @@ type KeyManagerModel struct {
 	quitting   bool
 	switchBack bool   // signal to switch back to dashboard
 	errMsg     string // error message to display in status bar
+	pendingG   bool
+	filterMode bool
+	filter     textinput.Model
 
 	// Form state
 	formMode        string // add | edit
@@ -70,9 +73,14 @@ var baseURLPlaceholders = []string{
 
 // NewKeyManagerModel creates a new key manager model
 func NewKeyManagerModel(store *key.Store) KeyManagerModel {
+	filter := textinput.New()
+	filter.Placeholder = "filter by name/tag/provider"
+	filter.CharLimit = 100
+	filter.Width = 40
 	m := KeyManagerModel{
-		store: store,
-		view:  KeyMgrViewList,
+		store:  store,
+		view:   KeyMgrViewList,
+		filter: filter,
 	}
 	m.buildKeyRows()
 	return m
@@ -113,6 +121,23 @@ func (m KeyManagerModel) updateList(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	m.errMsg = "" // clear error on any key press
 	k := msg.String()
 
+	if m.filterMode {
+		switch k {
+		case "esc":
+			m.filterMode = false
+			m.filter.Blur()
+			return m, nil
+		case "enter":
+			m.filterMode = false
+			m.filter.Blur()
+			return m, nil
+		}
+		var cmd tea.Cmd
+		m.filter, cmd = m.filter.Update(msg)
+		m.buildKeyRows()
+		return m, cmd
+	}
+
 	switch k {
 	case "q", "ctrl+c":
 		m.quitting = true
@@ -124,6 +149,21 @@ func (m KeyManagerModel) updateList(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		m.moveDown()
 	case "k", "up":
 		m.moveUp()
+	case "g":
+		if m.pendingG {
+			m.cursor = 0
+			m.pendingG = false
+		} else {
+			m.pendingG = true
+		}
+	case "G":
+		if len(m.keyRows) > 0 {
+			m.cursor = len(m.keyRows) - 1
+		}
+	case "/":
+		m.filterMode = true
+		m.filter.Focus()
+		return m, textinput.Blink
 	case "enter":
 		m.activateSelected()
 	case "a":
@@ -143,6 +183,8 @@ func (m KeyManagerModel) updateList(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 			m.confirmCursor = 0 // default to Cancel
 			m.view = KeyMgrViewConfirm
 		}
+	default:
+		m.pendingG = false
 	}
 
 	return m, nil
@@ -165,7 +207,7 @@ func (m *KeyManagerModel) buildKeyRows() {
 		})
 		// Add key rows for this provider
 		for i, k := range m.store.Keys {
-			if k.Provider == provider {
+			if k.Provider == provider && m.matchesFilter(k) {
 				active := "  "
 				if k.Active {
 					active = "* "
@@ -191,6 +233,25 @@ func (m *KeyManagerModel) buildKeyRows() {
 	if m.cursor < 0 {
 		m.cursor = 0
 	}
+}
+
+func (m *KeyManagerModel) matchesFilter(k key.Key) bool {
+	q := strings.TrimSpace(strings.ToLower(m.filter.Value()))
+	if q == "" {
+		return true
+	}
+	if strings.Contains(strings.ToLower(k.Name), q) {
+		return true
+	}
+	if strings.Contains(strings.ToLower(string(k.Provider)), q) {
+		return true
+	}
+	for _, t := range k.Tags {
+		if strings.Contains(strings.ToLower(t), q) {
+			return true
+		}
+	}
+	return false
 }
 
 // colWidths returns dynamic name and tags column widths based on terminal width.
@@ -512,19 +573,26 @@ func (m KeyManagerModel) viewList() string {
 	}
 
 	content := strings.Join(lines, "\n")
+	filterLine := ""
+	if m.filterMode || strings.TrimSpace(m.filter.Value()) != "" {
+		filterLine = "Filter: " + m.filter.View() + "\n\n"
+	}
 
 	title := " KEY MANAGER "
 	panel := PanelFocusStyle.
 		Width(m.width - 2).
 		Height(m.height - 3).
-		Render(TitleStyle.Render(title) + "\n\n" + content)
+		Render(TitleStyle.Render(title) + "\n\n" + filterLine + content)
 
-	bar := fmt.Sprintf(" %s │ %s Activate │ %s Add │ %s Edit │ %s Delete │ %s Back",
+	bar := fmt.Sprintf(" %s │ %s Activate │ %s Add │ %s Edit │ %s Delete │ %s Filter │ %s/%s Nav │ %s Back",
 		WarningStyle.Render("Keys"),
 		SuccessStyle.Render("Enter"),
 		SuccessStyle.Render("a"),
 		SuccessStyle.Render("e"),
 		SuccessStyle.Render("d"),
+		SuccessStyle.Render("/"),
+		SuccessStyle.Render("gg"),
+		SuccessStyle.Render("G"),
 		SuccessStyle.Render("Esc"),
 	)
 	if m.errMsg != "" {

@@ -399,7 +399,15 @@ func handleLaunch(store *key.Store, orch *session.Orchestrator, agentName string
 		command = command + " " + joinArgs(args)
 	}
 
-	// Launch session
+	cfg := buildSessionConfig(agent, activeKey, dir, command)
+
+	if err := orch.Launch(cfg); err != nil {
+		fmt.Fprintf(os.Stderr, "Error: %v\n", err)
+		os.Exit(1)
+	}
+}
+
+func buildSessionConfig(agent tui.Agent, activeKey *key.Key, dir, command string) session.SessionConfig {
 	cfg := session.SessionConfig{
 		Agent:   agent.Name,
 		Dir:     dir,
@@ -408,16 +416,10 @@ func handleLaunch(store *key.Store, orch *session.Orchestrator, agentName string
 			agent.EnvVar: activeKey.APIKey,
 		},
 	}
-
-	// Inject Base URL if set
 	if activeKey.BaseURL != "" && agent.BaseURLEnvVar != "" {
 		cfg.EnvVars[agent.BaseURLEnvVar] = activeKey.BaseURL
 	}
-
-	if err := orch.Launch(cfg); err != nil {
-		fmt.Fprintf(os.Stderr, "Error: %v\n", err)
-		os.Exit(1)
-	}
+	return cfg
 }
 
 // findAgent finds an agent by name
