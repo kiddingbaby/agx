@@ -8,7 +8,8 @@ import (
 	"github.com/charmbracelet/bubbles/textinput"
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
-	"github.com/kiddingbaby/agx/internal/key"
+	domainkey "github.com/kiddingbaby/agx/internal/domain/key"
+	"github.com/kiddingbaby/agx/internal/usecase"
 )
 
 // KeyMgrView tracks which view is active
@@ -24,7 +25,8 @@ const formFieldCount = 5 // provider, name, baseURL, apiKey, tags
 
 // KeyManagerModel is the Bubble Tea model for key management
 type KeyManagerModel struct {
-	store *key.Store
+	keyService *usecase.KeyService
+	keys       []domainkey.Key
 
 	view       KeyMgrView
 	cursor     int
@@ -55,13 +57,13 @@ type KeyManagerModel struct {
 
 // keyRow represents a selectable row in the key list
 type keyRow struct {
-	keyIdx   int // index into store.Keys, -1 for provider header
-	provider key.Provider
+	keyID    string // empty for provider header
+	provider domainkey.Provider
 	isHeader bool
 	display  string
 }
 
-var providers = []key.Provider{key.ProviderClaude, key.ProviderOpenAI, key.ProviderGemini}
+var providers = []domainkey.Provider{domainkey.ProviderClaude, domainkey.ProviderOpenAI, domainkey.ProviderGemini}
 var providerNames = []string{"claude", "openai", "gemini"}
 
 // baseURLPlaceholders maps provider index to a placeholder URL
@@ -72,18 +74,23 @@ var baseURLPlaceholders = []string{
 }
 
 // NewKeyManagerModel creates a new key manager model
-func NewKeyManagerModel(store *key.Store) KeyManagerModel {
+func NewKeyManagerModel(keySvc *usecase.KeyService) KeyManagerModel {
 	filter := textinput.New()
 	filter.Placeholder = "filter by name/tag/provider"
 	filter.CharLimit = 100
 	filter.Width = 40
 	m := KeyManagerModel{
-		store:  store,
-		view:   KeyMgrViewList,
-		filter: filter,
+		keyService: keySvc,
+		view:       KeyMgrViewList,
+		filter:     filter,
 	}
+	m.refreshKeys()
 	m.buildKeyRows()
 	return m
+}
+
+func (m *KeyManagerModel) refreshKeys() {
+	m.keys = m.keyService.List()
 }
 
 // ShouldSwitchBack returns true if user requested going back
@@ -172,13 +179,13 @@ func (m KeyManagerModel) updateList(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		m.view = KeyMgrViewForm
 		return m, textinput.Blink
 	case "e":
-		if m.cursor < len(m.keyRows) && m.keyRows[m.cursor].keyIdx >= 0 {
-			m.initEditForm(m.keyRows[m.cursor].keyIdx)
+		if m.cursor < len(m.keyRows) && m.keyRows[m.cursor].keyID != "" {
+			m.initEditForm(m.keyRows[m.cursor].keyID)
 			m.view = KeyMgrViewForm
 			return m, textinput.Blink
 		}
 	case "d":
-		if m.cursor < len(m.keyRows) && m.keyRows[m.cursor].keyIdx >= 0 {
+		if m.cursor < len(m.keyRows) && m.keyRows[m.cursor].keyID != "" {
 			m.confirmIdx = m.cursor
 			m.confirmCursor = 0 // default to Cancel
 			m.view = KeyMgrViewConfirm
@@ -200,13 +207,13 @@ func (m *KeyManagerModel) buildKeyRows() {
 	for _, provider := range providers {
 		// Add provider header row (always selectable)
 		m.keyRows = append(m.keyRows, keyRow{
-			keyIdx:   -1,
+			keyID:    "",
 			provider: provider,
 			isHeader: true,
 			display:  strings.ToUpper(string(provider)),
 		})
 		// Add key rows for this provider
-		for i, k := range m.store.Keys {
+		for _, k := range m.keys {
 			if k.Provider == provider && m.matchesFilter(k) {
 				active := "  "
 				if k.Active {
@@ -221,7 +228,7 @@ func (m *KeyManagerModel) buildKeyRows() {
 					nameW, truncate(k.Name, nameW),
 					tagsW, truncate(tagsStr, tagsW),
 					displayDate(k).Format("2006-01-02"))
-				m.keyRows = append(m.keyRows, keyRow{keyIdx: i, provider: provider, display: display})
+				m.keyRows = append(m.keyRows, keyRow{keyID: k.ID, provider: provider, display: display})
 			}
 		}
 	}
@@ -235,7 +242,7 @@ func (m *KeyManagerModel) buildKeyRows() {
 	}
 }
 
-func (m *KeyManagerModel) matchesFilter(k key.Key) bool {
+func (m *KeyManagerModel) matchesFilter(k domainkey.Key) bool {
 	q := strings.TrimSpace(strings.ToLower(m.filter.Value()))
 	if q == "" {
 		return true
@@ -293,7 +300,7 @@ func (m *KeyManagerModel) currentProviderIdx() int {
 	if m.cursor < len(m.keyRows) {
 		p := m.keyRows[m.cursor].provider
 		for i, pn := range providerNames {
-			if key.Provider(pn) == p {
+			if domainkey.Provider(pn) == p {
 				return i
 			}
 		}
@@ -306,15 +313,15 @@ func (m *KeyManagerModel) activateSelected() {
 		return
 	}
 	row := m.keyRows[m.cursor]
-	if row.keyIdx < 0 || row.keyIdx >= len(m.store.Keys) {
+	if row.keyID == "" {
 		return
 	}
-	k := m.store.Keys[row.keyIdx]
-	if err := m.store.Activate(k.ID); err != nil {
+	if err := m.keyService.Activate(row.keyID); err != nil {
 		m.errMsg = fmt.Sprintf("Activate failed: %v", err)
 		return
 	}
 	m.errMsg = ""
+	m.refreshKeys()
 	m.buildKeyRows()
 }
 
@@ -348,14 +355,14 @@ func (m *KeyManagerModel) initForm(providerIdx int) {
 	m.formTags.Width = 30
 }
 
-func (m *KeyManagerModel) initEditForm(keyIdx int) {
-	if keyIdx < 0 || keyIdx >= len(m.store.Keys) {
+func (m *KeyManagerModel) initEditForm(keyID string) {
+	k, ok := m.getKeyByID(keyID)
+	if !ok {
 		return
 	}
-	k := m.store.Keys[keyIdx]
 	providerIdx := 0
 	for i, pn := range providerNames {
-		if key.Provider(pn) == k.Provider {
+		if domainkey.Provider(pn) == k.Provider {
 			providerIdx = i
 			break
 		}
@@ -369,6 +376,15 @@ func (m *KeyManagerModel) initEditForm(keyIdx int) {
 	m.formKey.SetValue("")
 	m.formKey.Placeholder = "(leave empty to keep unchanged)"
 	m.formTags.SetValue(strings.Join(k.Tags, ", "))
+}
+
+func (m KeyManagerModel) getKeyByID(id string) (domainkey.Key, bool) {
+	for i := range m.keys {
+		if m.keys[i].ID == id {
+			return m.keys[i], true
+		}
+	}
+	return domainkey.Key{}, false
 }
 
 func (m KeyManagerModel) updateForm(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
@@ -471,19 +487,20 @@ func (m *KeyManagerModel) saveForm() {
 		}
 	}
 
-	provider := key.Provider(providerNames[m.formProviderIdx])
+	provider := domainkey.Provider(providerNames[m.formProviderIdx])
 	if m.formMode == "edit" {
-		if _, err := m.store.Update(m.formEditingKey, provider, name, apiKey, baseURL, tags); err != nil {
+		if _, err := m.keyService.Update(m.formEditingKey, provider, name, apiKey, baseURL, tags); err != nil {
 			m.errMsg = fmt.Sprintf("Save failed: %v", err)
 			return
 		}
 	} else {
-		if _, err := m.store.Add(provider, name, apiKey, baseURL, tags); err != nil {
+		if _, err := m.keyService.Add(provider, name, apiKey, baseURL, tags); err != nil {
 			m.errMsg = fmt.Sprintf("Save failed: %v", err)
 			return
 		}
 	}
 	m.errMsg = ""
+	m.refreshKeys()
 	m.buildKeyRows()
 }
 
@@ -501,9 +518,12 @@ func (m KeyManagerModel) updateConfirm(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 			// Delete
 			if m.confirmIdx < len(m.keyRows) {
 				row := m.keyRows[m.confirmIdx]
-				if row.keyIdx >= 0 && row.keyIdx < len(m.store.Keys) {
-					k := m.store.Keys[row.keyIdx]
-					m.store.Delete(k.ID)
+				if row.keyID != "" {
+					if err := m.keyService.Delete(row.keyID); err != nil {
+						m.errMsg = fmt.Sprintf("Delete failed: %v", err)
+						return m, nil
+					}
+					m.refreshKeys()
 					m.buildKeyRows()
 				}
 			}
@@ -561,8 +581,10 @@ func (m KeyManagerModel) viewList() string {
 			}
 		} else {
 			style := NormalStyle
-			if row.keyIdx >= 0 && row.keyIdx < len(m.store.Keys) && m.store.Keys[row.keyIdx].Active {
-				style = SuccessStyle
+			if row.keyID != "" {
+				if k, ok := m.getKeyByID(row.keyID); ok && k.Active {
+					style = SuccessStyle
+				}
 			}
 			line := "  " + style.Render(row.display)
 			if i == m.cursor {
@@ -664,8 +686,10 @@ func (m KeyManagerModel) viewConfirm() string {
 	name := "unknown"
 	if m.confirmIdx < len(m.keyRows) {
 		row := m.keyRows[m.confirmIdx]
-		if row.keyIdx >= 0 && row.keyIdx < len(m.store.Keys) {
-			name = m.store.Keys[row.keyIdx].Name
+		if row.keyID != "" {
+			if k, ok := m.getKeyByID(row.keyID); ok {
+				name = k.Name
+			}
 		}
 	}
 
@@ -722,7 +746,7 @@ func splitTags(s string) []string {
 	return result
 }
 
-func displayDate(k key.Key) time.Time {
+func displayDate(k domainkey.Key) time.Time {
 	if !k.UpdatedAt.IsZero() {
 		return k.UpdatedAt
 	}
