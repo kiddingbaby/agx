@@ -3,6 +3,7 @@
 ## Overview
 
 本次交付将现有“半分层”代码收敛为完整分层架构，目标是降低维护成本并提升可扩展性与可测试性。
+截至 2026-02-24，核心重构任务已完成，本文档同步记录现状与剩余差距。
 
 ## Design Reference
 
@@ -11,11 +12,12 @@
 
 ## Goals
 
-- [ ] Goal 1: 新增 Agent 仅修改 `internal/domain/agent`（不改 CLI/TUI 主流程）。
-- [ ] Goal 2: `usecase` 测试可在无 tmux 环境稳定通过。
-- [ ] Goal 3: key 存储实现可替换（YAML -> 其他）且不影响 interfaces 层。
-- [ ] Goal 4: `cmd/agx/main.go` 收敛为薄入口（仅装配+分发）。
-- [ ] Goal 5: 密钥明文不进入日志/命令串/错误输出。
+- [ ] Goal 1: 新增 Agent 仅修改 `internal/domain/agent`
+  （未完全达成：`internal/interfaces/cli/root.go` 与 `internal/interfaces/cli/launch.go` 仍有 agent 列表文案硬编码）。
+- [x] Goal 2: `usecase` 测试可在无 tmux 环境稳定通过。
+- [x] Goal 3: key 存储实现可替换（YAML -> 其他）且不影响 interfaces 层。
+- [x] Goal 4: `cmd/agx/main.go` 收敛为薄入口（仅装配+分发）。
+- [ ] Goal 5: 密钥明文不进入日志/命令串/错误输出（部分达成：未写入日志/错误；运行期仍通过 `tmux set-environment` 参数传递 secret，需继续评估本机进程可见性风险）。
 
 ## Non-Goals
 
@@ -23,7 +25,7 @@
 - 不接入外部 Secret Manager（Vault/1Password/KMS）。
 - 不实现历史兼容迁移层（按约束可直接重构）。
 
-## Background
+## Historical Background (Before Refactor)
 
 当前主要问题（以代码为准）：
 
@@ -69,20 +71,25 @@ Interfaces (cli/tui)
 
 ## Implementation Plan
 
-1. [ ] Step 1: 引入 `domain/key`，重写 `ports.KeyRepository`，调整 `usecase/key_service` 依赖。
-2. [ ] Step 2: 拆分 `internal/key` 到 `internal/adapters/keyfile`（仓储 + crypto），并补齐测试。
-3. [ ] Step 3: 下沉 `internal/session` 到 `internal/adapters/tmux`，把会话命名规则上移到 domain/usecase。
-4. [ ] Step 4: 引入 `internal/app/bootstrap` + `internal/config`，收敛 secret/path 生命周期。
-5. [ ] Step 5: 拆分 CLI 到 `internal/interfaces/cli`，将 `main.go` 收敛为薄入口。
-6. [ ] Step 6: 拆分 TUI 入口到 `internal/interfaces/tui/app.go`，移除对 adapter 的直接依赖。
-7. [ ] Step 7: 统一 usecase 错误模型并同步 CLI/TUI 错误映射。
-8. [ ] Step 8: 更新 README/docs 与 smoke 测试脚本，锁定回归基线。
+1. [x] Step 1: 引入 `domain/key`，重写 `ports.KeyRepository`，调整 `usecase/key_service` 依赖。
+2. [x] Step 2: 拆分 `internal/key` 到 `internal/adapters/keyfile`（仓储 + crypto），并补齐测试。
+3. [x] Step 3: 下沉 `internal/session` 到 `internal/adapters/tmux`，把会话命名规则上移到 domain/usecase。
+4. [x] Step 4: 引入 `internal/app/bootstrap` + `internal/config`，收敛 secret/path 生命周期。
+5. [x] Step 5: 拆分 CLI 到 `internal/interfaces/cli`，将 `main.go` 收敛为薄入口。
+6. [x] Step 6: 拆分 TUI 入口到 `internal/interfaces/tui/app.go`，移除对 adapter 的直接依赖。
+7. [x] Step 7: 统一 usecase 错误模型并同步 CLI/TUI 错误映射。
+8. [x] Step 8: 更新 README/docs 与 smoke 测试脚本，锁定回归基线。
 
 ## Testing Strategy
 
-- [ ] Unit tests: `domain/*` 纯规则测试；`usecase/*` 使用 fake ports。
-- [ ] Integration tests: `adapters/keyfile`（文件+加密）、`adapters/tmux`（有 tmux 时运行）。
-- [ ] Regression tests: `go test ./...` + CLI smoke（`agx --help`、`agx keys ls`、`agx ls`、无 active key launch 错误路径）。
+- [x] Unit tests: `domain/*` 纯规则测试；`usecase/*` 使用 fake ports。
+- [x] Integration tests: `adapters/keyfile`（文件+加密）、`adapters/tmux`（有 tmux 时运行）。
+- [x] Regression tests: `go test ./...` + CLI smoke（`agx --help`、`agx keys ls`、`agx ls`、无 active key launch 错误路径）。
+
+## Current Gaps
+
+1. Goal 1 尚未完全达成：agent 列表文案仍有重复定义。
+2. Goal 5 尚未完全达成：secret 仍通过 `tmux set-environment` 参数注入，需进一步收敛暴露面。
 
 ## Security Considerations
 

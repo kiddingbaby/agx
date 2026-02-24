@@ -65,6 +65,22 @@ Interfaces (CLI/TUI)
 - 云端 secret manager 集成。
 - 多租户/多用户权限模型。
 
+## Document Granularity Strategy
+
+当前保持三份顶层文档，不继续拆分：
+
+- `DESIGN.md`：问题定义、架构决策、边界与风险。
+- `SPEC.md`：实现约束、接口变化、测试与回滚策略。
+- `TODO.md`：可执行任务、依赖关系、阶段状态。
+
+触发拆分条件（满足任一条再拆）：
+
+1. 单文档长期超过约 250-300 行且导航成本明显上升。
+2. 多人并行编辑导致频繁冲突（同一文件持续冲突）。
+3. 存在独立生命周期的子流（例如某条子线需单独评审/发布）。
+
+在未触发拆分前，优先使用标题层级、锚点链接与索引，而非新增文件层级。
+
 ## Risks and Mitigations
 
 1. **行为漂移风险**：重构后 CLI/TUI 行为偏移。  
@@ -76,8 +92,8 @@ Interfaces (CLI/TUI)
 
 ## Acceptance Criteria
 
-- [ ] 新增一个 agent 只改 `domain/agent` 与文档。
-- [ ] usecase 关键链路测试不依赖 tmux。
-- [ ] `cmd/agx/main.go` 不再承载业务规则，仅做装配和入口分发。
-- [ ] key 存储实现替换不影响 interfaces 层。
-- [ ] `go test ./...` 持续通过。
+- [ ] 新增一个 agent 只改 `domain/agent` 与文档（未完全达成：CLI 帮助与 unknown-agent 提示仍含硬编码 agent 列表）。
+- [x] usecase 关键链路测试不依赖 tmux。
+- [x] `cmd/agx/main.go` 不再承载业务规则，仅做装配和入口分发。
+- [x] key 存储实现替换不影响 interfaces 层。
+- [x] `go test ./...` 持续通过（最近验证：2026-02-24）。

@@ -25,7 +25,7 @@ Created: 2026-02-15 09:38:28
 
 ### [2] done - 拆分 key 存储到 adapters/keyfile
 
-- File: internal/adapters/keyfile/repository.go, internal/adapters/keyfile/crypto.go, internal/key/store.go, internal/key/store_test.go
+- File: internal/adapters/keyfile/repository.go, internal/adapters/keyfile/crypto.go, internal/adapters/keyfile/repository_test.go
 - Description: 将 YAML/AES-GCM 逻辑下沉到 adapter，实现新 `KeyRepository` 接口，清理旧 `internal/key` 直接领域暴露。
 - Dependencies: [1]
 - Steps:
@@ -43,8 +43,7 @@ Created: 2026-02-15 09:38:28
 ### [3] done - 拆分 session runtime 到 adapters/tmux 并上移命名规则
 
 - File: internal/adapters/tmux/runtime.go, internal/domain/session/naming.go,
-  internal/session/orchestrator.go, internal/usecase/session_service.go,
-  internal/usecase/launch_service.go
+  internal/usecase/session_service.go, internal/usecase/launch_service.go
 - Description: tmux 细节下沉 adapter；`ai-` 命名规则迁移到 domain/usecase，避免 runtime 与业务语义耦合。
 - Dependencies: [1]
 - Steps:
@@ -117,7 +116,7 @@ Created: 2026-02-15 09:38:28
 - File: internal/interfaces/tui/app.go, internal/interfaces/tui/dashboard/model.go,
   internal/interfaces/tui/keymgr/model.go, internal/tui/dashboard.go,
   internal/tui/keymgr.go, cmd/agx/tui.go
-- Description: 将 TUI 生命周期与页面模型迁入 interfaces 层，仅通过 usecase 访问业务能力。
+- Description: 将 TUI 生命周期入口迁入 interfaces 层，并仅通过 usecase 访问业务能力；页面模型当前由 `internal/tui` 提供并在 `internal/interfaces/tui` 复用。
 - Dependencies: [4,5]
 - Steps:
   - [x] coding    @ 2026-02-15 14:09:33 (1ecc94d)
@@ -154,6 +153,11 @@ Created: 2026-02-15 09:38:28
 - Pending: 0
 - In Progress: 0
 - Done: 8
+
+## Completion Scope
+
+- 以上状态仅表示重构任务清单已执行完成，不等价于所有产品目标 100% 达成。
+- 当前剩余差距以 `SPEC.md` 的 `Current Gaps` 为准。
 
 ## Notes
 
