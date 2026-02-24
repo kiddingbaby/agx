@@ -9,7 +9,10 @@
 .DS_Store
 
 # Agent files
-.workflow/
+.workflow/*
+!.workflow/config/
+.workflow/config/*
+!.workflow/config/workflow.yml
 agx
 DESIGN.md
 SPECS.md

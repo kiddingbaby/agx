@@ -77,3 +77,9 @@ bash tests/integration/smoke-go.sh
 ```
 
 `tests/e2e/cli-smoke.sh` 会在临时 `HOME` 下执行最小 CLI 冒烟（不污染本机配置）。
+
+## Workflow
+
+- 使用说明：`docs/workflow.md`
+- 配置源：`.workflow/config/workflow.yml`
+- 运行文档源：`.workflow/docs/DESIGN.md` / `.workflow/docs/SPEC.md` / `.workflow/docs/TODO.md`
