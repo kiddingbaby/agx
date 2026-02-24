@@ -32,6 +32,15 @@ agx/
 │   ├── usecase/
 │   └── tui/          # Bubble Tea model 实现
 ├── docs/
+│   └── workflow.md
+├── .workflow/
+│   ├── docs/
+│   │   ├── DESIGN.md
+│   │   ├── SPEC.md
+│   │   ├── TODO.md
+│   │   └── UAT.md
+│   └── config/
+│       └── workflow.yml
 ├── tests/
 │   ├── integration/
 │   └── e2e/
