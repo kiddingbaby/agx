@@ -1,162 +1,99 @@
-# AGX V1 设计文档（Key 交互 + Env 托管）
+# DESIGN: AGX 技术架构重构（Code-First）
 
-## Problem
+## Problem Statement
 
-当前要解决的核心问题：
+当前 AGX 已经引入 `domain/ports/usecase` 雏形，但仍处于“半分层”：
 
-1. `key` 管理缺少完整 CRUD（特别是 Edit），用户需要快速键盘操作。
-2. 环境变量使用体验不友好，用户不希望修改 `~/.bashrc`/`~/.zshrc` 等系统环境文件。
-3. 交互风格需要统一，是否全局 Vim 风格需要明确策略。
+1. `cmd/agx/main.go` 过载（初始化 + 路由 + 业务错误分流混在一起）。
+2. `internal/key/store.go` 混合领域模型、存储实现、加密逻辑，边界不清。
+3. key/session 核心路径可测试性不足，扩展新 agent/runtime 成本高。
 
-用户价值目标（V1）：
+结果是：新增能力时容易触发跨层改动，回归风险和维护成本持续上升。
 
-1. 30 秒内完成 key 新增并可立即启动 agent。
-2. 启动时由 AGX 自动注入所需 env，不要求用户手工 `export`。
-3. 全流程键盘可达，低误操作（尤其 Delete）。
+## User Stories
 
----
+- 作为产品工程师，我希望新增 agent 只改领域配置，不改 CLI/TUI 主流程，从而降低功能扩展成本。
+- 作为维护者，我希望 usecase 在无 tmux 环境下可稳定测试，从而避免基础设施依赖导致回归不稳定。
+- 作为架构维护者，我希望 key 存储实现可替换（YAML -> 其他），从而支持未来演进。
 
-## Architecture
+## Key Constraints
 
-### 1. Key 管理交互架构
+1. 暂不考虑历史兼容性，以架构清晰优先。
+2. 技术栈保持 Go + Bubble Tea + tmux。
+3. 安全底线不降低：明文 key 不写日志、不拼接到命令串、不输出到错误信息。
 
-采用三态模型：`List` / `Form(Add|Edit)` / `Confirm(Delete)`。
+## Target Architecture
 
-#### List（主界面）
+采用五层结构并强约束依赖方向：
 
-- Provider 分组展示（Claude/OpenAI/Gemini）。
-- 行类型：`provider header` + `key item`。
-- 显示字段：`active`、`name`、`tags`、`updated_at`。
-- 支持快速过滤：`/` 进入搜索（按 name/tag/provider）。
+```text
+Interfaces (CLI/TUI)
+    -> Usecase
+        -> Domain
+            -> Ports
+                -> Adapters (tmux / keyfile / os secret)
+```
 
-关键操作：
+### Layer Responsibilities
 
-- `a`：新增（默认继承当前 provider）。
-- `e`：编辑（进入 Form，回填现有值）。
-- `Enter`：设为 active。
-- `d`：删除（进入 Confirm）。
-- `/`：搜索过滤。
+1. **Interfaces**：参数解析、交互状态、文案展示；不含业务规则。
+2. **Usecase**：业务编排和错误归一；不依赖具体 IO 实现。
+3. **Domain**：稳定核心模型与规则（agent/key/session）。
+4. **Ports**：外部能力抽象（repository/runtime/secret provider）。
+5. **Adapters**：实现端口，处理 tmux、文件系统、yaml、crypto 细节。
 
-#### Form（新增/编辑共用）
+## Core Design Decisions
 
-字段顺序：
+1. 引入 `domain/key`，把 `Provider/Key` 从 `internal/key` 中抽离。
+2. 将 `internal/key` 下沉为 `internal/adapters/keyfile`，只做持久化与加密。
+3. 将 `internal/session` 下沉为 `internal/adapters/tmux`，业务命名规则上移到 domain/usecase。
+4. 增加 `internal/app/bootstrap`，统一依赖装配（config/repo/runtime/service）。
+5. CLI/TUI 只依赖 usecase/domain，不直接依赖 adapter concrete type。
 
-1. Provider（新增可改，编辑默认锁定或二次确认）
-2. Name（必填）
-3. Base URL（可选）
-4. API Key（必填；编辑时支持“保持原值”）
-5. Tags（可选）
+## Design Scope
 
-表单策略：
+### In Scope (P0/P1)
 
-- 新增默认聚焦 `Name`，减少无效跳转。
-- 编辑回填，`API Key` 默认留空表示不改动。
-- 保存时做最小校验：必填、Provider 合法、URL 格式。
+- P0: 入口解耦（薄 `main.go` + interfaces 拆分）。
+- P0: key/session 架构分层完整化（domain/ports/usecase/adapters）。
+- P0: usecase 可脱离 tmux 做单测。
+- P1: key repository 可替换，且不影响 CLI/TUI 代码。
 
-#### Confirm（删除确认）
+### Out of Scope
 
-- 默认焦点 `Cancel`，防误删。
-- 文案展示 `provider/name`。
-- 二次确认策略：V1 使用显式确认弹窗；暂不做 Undo 队列（复杂度高）。
+- UI 视觉大改或交互重做。
+- 云端 secret manager 集成。
+- 多租户/多用户权限模型。
 
-### 2. 统一键位策略（Vim + 通用双轨）
+## Document Granularity Strategy
 
-结论：**全界面支持 Vim 风格，但不强制仅 Vim。**
+当前保持三份顶层文档，不继续拆分：
 
-- Vim：`j/k` 上下，`h/l` 左右，`gg/G` 首尾，`/` 搜索，`Esc` 返回。
-- 通用：方向键、`Tab/Shift+Tab`、`Enter` 保持可用。
+- `DESIGN.md`：问题定义、架构决策、边界与风险。
+- `SPEC.md`：实现约束、接口变化、测试与回滚策略。
+- `TODO.md`：可执行任务、依赖关系、阶段状态。
 
-理由：
+触发拆分条件（满足任一条再拆）：
 
-1. 满足 power user 效率诉求。
-2. 不牺牲新用户可用性。
-3. 降低“必须会 Vim”门槛，减少支持成本。
+1. 单文档长期超过约 250-300 行且导航成本明显上升。
+2. 多人并行编辑导致频繁冲突（同一文件持续冲突）。
+3. 存在独立生命周期的子流（例如某条子线需单独评审/发布）。
 
-### 3. Env 注入架构（完全由 AGX 托管）
+在未触发拆分前，优先使用标题层级、锚点链接与索引，而非新增文件层级。
 
-设计目标：用户无需修改系统环境变量文件。
+## Risks and Mitigations
 
-#### 配置与密钥来源
+1. **行为漂移风险**：重构后 CLI/TUI 行为偏移。  
+   - 缓解：固定 smoke 基线（`agx --help`、`agx keys ls`、`agx ls`、典型 launch 错误路径）。
+2. **密钥泄漏风险**：重构过程中错误输出暴露敏感信息。  
+   - 缓解：统一脱敏策略，禁止在日志/错误中输出明文 key。
+3. **重构失控风险**：一次性改动过大。  
+   - 缓解：分 Phase 独立提交，单阶段可回滚。
 
-1. API Key / Base URL 存储：`~/.config/agx/keys.yaml`（API Key 加密）。
-2. 加密主密钥：`~/.config/agx/secret` 自动生成并 `0600`。
-3. `AGX_SECRET` 仅作为可选覆盖，不再作为默认前置步骤。
+## Acceptance Criteria
 
-#### 运行时注入
-
-- 启动 agent 时，AGX 从 active key 组装 env map：
-  - Claude: `ANTHROPIC_API_KEY` / `ANTHROPIC_BASE_URL`
-  - OpenAI: `OPENAI_API_KEY` / `OPENAI_API_BASE`
-  - Gemini: `GOOGLE_API_KEY` / `GEMINI_BASE_URL`
-- 注入范围为 AGX 启动的 agent 会话，不污染用户全局 shell 环境。
-
-#### 安全改进（必须落地）
-
-当前实现通过 `export KEY=... && cmd` 拼接命令，有明文暴露风险（进程参数/调试输出）。
-
-V1 要求改为：
-
-1. 避免把明文密钥拼进命令行字符串。
-2. 使用 tmux 原生环境注入能力（可用时）或等价安全方案。
-3. 日志和错误信息默认脱敏（仅显示前后少量字符）。
-
----
-
-## Implementation
-
-### 1. 功能优先级（V1 生产）
-
-P0（必须）：
-
-1. Key `Add/Edit/Delete/Activate/List` 完整闭环。
-2. 双轨键位（Vim + 通用）在 Dashboard/KeyMgr/Form/Confirm 全覆盖。
-3. AGX 托管 env 注入，默认不需要改 shell 配置文件。
-4. 启动链路安全注入（不明文拼接 secret 到命令行）。
-5. 关键错误提示可行动（例如“无 active key，按 K 去配置”）。
-
-P1（建议）：
-
-1. Key 搜索/过滤与 tags 管理优化。
-2. `agx keys edit` CLI 子命令（非交互）。
-3. 启动前 env preview（值脱敏）用于排障。
-
-P2（后续）：
-
-1. 项目级 profile（同 provider 多环境切换）。
-2. 外部 Secret Manager 对接（1Password/Vault/KMS）。
-
-### 2. 用户故事（验收口径）
-
-1. 作为开发者，我可以在 `agx keys` 里只用键盘完成 key 新增/编辑/删除。
-2. 作为开发者，我执行 `agx claude` 时不需要预先改 `~/.bashrc`，也能自动带上正确 key。
-3. 作为开发者，我可以统一使用 `hjkl` 在所有界面操作，同时方向键也可工作。
-4. 作为维护者，我不能在日志或命令行参数中看到完整 API Key。
-
-### 3. 非目标（V1 不做）
-
-1. 多人协作密钥共享与权限模型。
-2. 云端同步与远程密钥托管。
-3. 删除后可恢复（Undo/Trash）机制。
-
-### 4. 约束与风险
-
-约束：
-
-1. 技术栈保持 Go + Bubble Tea + tmux。
-2. 保持现有 keys 存储格式可兼容迁移。
-
-风险：
-
-1. tmux 版本差异导致环境注入能力不一致。
-2. Edit 语义若处理不清，可能误覆盖 API Key。
-
-缓解：
-
-1. 启动时探测 tmux 能力并降级。
-2. Edit 表单中“空 API Key = 保持不变”并加明确提示。
-
-### 5. 里程碑建议
-
-1. M1：交互补齐（`e` 编辑 + 全局键位一致性）。
-2. M2：安全 env 注入改造 + 脱敏日志。
-3. M3：CLI `keys edit` + 搜索过滤。
+- [ ] 新增一个 agent 只改 `domain/agent` 与文档（未完全达成：CLI 帮助与 unknown-agent 提示仍含硬编码 agent 列表）。
+- [x] usecase 关键链路测试不依赖 tmux。
+- [x] `cmd/agx/main.go` 不再承载业务规则，仅做装配和入口分发。
+- [x] key 存储实现替换不影响 interfaces 层。
+- [x] `go test ./...` 持续通过（最近验证：2026-02-24）。

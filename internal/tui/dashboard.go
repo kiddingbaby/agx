@@ -8,8 +8,9 @@ import (
 	"github.com/charmbracelet/bubbles/spinner"
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
-	ks "github.com/kiddingbaby/agx/internal/key"
-	"github.com/kiddingbaby/agx/internal/session"
+	domainkey "github.com/kiddingbaby/agx/internal/domain/key"
+	domainsession "github.com/kiddingbaby/agx/internal/domain/session"
+	"github.com/kiddingbaby/agx/internal/usecase"
 )
 
 // Focus tracks which panel has focus
@@ -30,17 +31,17 @@ type DashboardCallbacks struct {
 
 // sessionsMsg carries the result of listing sessions
 type sessionsMsg struct {
-	sessions []session.SessionInfo
+	sessions []domainsession.SessionInfo
 	err      error
 }
 
 // DashboardModel is the Bubble Tea model for the session dashboard
 type DashboardModel struct {
-	orch      *session.Orchestrator
-	store     *ks.Store
-	callbacks DashboardCallbacks
+	sessionSvc *usecase.SessionService
+	keyService *usecase.KeyService
+	callbacks  DashboardCallbacks
 
-	sessions  []session.SessionInfo
+	sessions  []domainsession.SessionInfo
 	agents    []Agent
 	focus     Focus
 	cursor    int // cursor in the focused list
@@ -54,18 +55,18 @@ type DashboardModel struct {
 }
 
 // NewDashboardModel creates a new dashboard model
-func NewDashboardModel(orch *session.Orchestrator, store *ks.Store, cb DashboardCallbacks) DashboardModel {
+func NewDashboardModel(sessionSvc *usecase.SessionService, keyService *usecase.KeyService, cb DashboardCallbacks) DashboardModel {
 	s := spinner.New()
 	s.Spinner = spinner.Dot
 	s.Style = lipgloss.NewStyle().Foreground(Accent)
 
 	return DashboardModel{
-		orch:      orch,
-		store:     store,
-		callbacks: cb,
-		agents:    DefaultAgents(),
-		spinner:   s,
-		loading:   true,
+		sessionSvc: sessionSvc,
+		keyService: keyService,
+		callbacks:  cb,
+		agents:     DefaultAgents(),
+		spinner:    s,
+		loading:    true,
 	}
 }
 
@@ -80,7 +81,7 @@ func (m DashboardModel) Init() tea.Cmd {
 
 func (m DashboardModel) fetchSessions() tea.Cmd {
 	return func() tea.Msg {
-		sessions, err := m.orch.ListSessions()
+		sessions, err := m.sessionSvc.List()
 		return sessionsMsg{sessions: sessions, err: err}
 	}
 }
@@ -338,7 +339,7 @@ func (m DashboardModel) renderStatusBar() string {
 }
 
 func (m DashboardModel) hasActiveKey(provider string) bool {
-	return m.store.HasActive(ks.Provider(provider))
+	return m.keyService.HasActive(domainkey.Provider(provider))
 }
 
 // GetCwd returns the current working directory

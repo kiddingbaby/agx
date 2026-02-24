@@ -132,22 +132,3 @@ func TestJoinArgs(t *testing.T) {
 		})
 	}
 }
-
-func TestNormalizeSessionName(t *testing.T) {
-	tests := []struct {
-		input string
-		want  string
-	}{
-		{"claude", "ai-claude"},
-		{"ai-claude", "ai-claude"},
-		{"codex", "ai-codex"},
-		{"ai-codex-cli", "ai-codex-cli"},
-	}
-
-	for _, tt := range tests {
-		got := normalizeSessionName(tt.input)
-		if got != tt.want {
-			t.Errorf("normalizeSessionName(%q) = %q, want %q", tt.input, got, tt.want)
-		}
-	}
-}
