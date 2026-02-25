@@ -46,19 +46,20 @@ func (s *KeyService) Activate(id string) error {
 
 func (s *KeyService) FindByIdentifier(identifier string) (*domainkey.Key, error) {
 	keys := s.repo.List()
+	var prefixMatch *domainkey.Key
 	for i := range keys {
 		if keys[i].Name == identifier {
 			return &keys[i], nil
 		}
-	}
-	for i := range keys {
-		if strings.HasPrefix(keys[i].ID, identifier) {
-			return &keys[i], nil
+		if prefixMatch == nil && strings.HasPrefix(keys[i].ID, identifier) {
+			prefixMatch = &keys[i]
 		}
+	}
+	if prefixMatch != nil {
+		return prefixMatch, nil
 	}
 	return nil, &KeyNotFoundError{Identifier: identifier}
 }
-
 func (s *KeyService) ActivateByIdentifier(identifier string) (*domainkey.Key, error) {
 	k, err := s.FindByIdentifier(identifier)
 	if err != nil {
