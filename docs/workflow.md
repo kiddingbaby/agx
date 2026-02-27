@@ -8,6 +8,18 @@
 
 `.spec-workflow.conf` 已弃用，不再生效。
 
+## 根目录约束
+
+本项目不接受任何 wf 生成产物落在仓库根目录。  
+wf 相关产物必须全部位于 `.workflow/`（例如 docs/state/archive/reports/tasks）。
+
+以下路径在本项目视为不允许出现：
+
+- `workflow.config.yml`
+- `tools/workflow/gate.py`
+- `.github/workflows/workflow-gate.yml`
+- `.spec-workflow.conf`
+
 ## 最小配置原则
 
 项目侧不做复杂配置，直接使用 skill 默认模板值：
@@ -30,8 +42,6 @@ workflow 运行文档统一在：
 - `.workflow/docs/SPEC.md`
 - `.workflow/docs/TODO.md`
 - `.workflow/docs/UAT.md`
-
-> 根目录 `DESIGN.md/SPEC.md/TODO.md` 可作为工程长期文档保留，但不是 workflow 默认运行入口。
 
 ## 推荐流程
 

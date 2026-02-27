@@ -1,8 +1,0 @@
---- a/workflow.sh
-+++ b/workflow.sh
-@@
-         auto)
-+            _load_module task
-             _load_module auto
-             cmd_auto "$@"
-             ;;

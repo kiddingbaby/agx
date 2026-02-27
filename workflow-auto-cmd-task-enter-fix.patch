@@ -1,9 +1,0 @@
-*** Begin Patch
-*** Update File: /home/cow/.claude/skills/workflow/scripts/workflow.sh
-@@
-         auto)
-+            _load_module task
-             _load_module auto
-             cmd_auto "$@"
-             ;;
-*** End Patch
