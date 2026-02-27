@@ -339,7 +339,7 @@ func (m DashboardModel) renderStatusBar() string {
 }
 
 func (m DashboardModel) hasActiveKey(provider string) bool {
-	return m.keyService.HasActive(domainkey.Provider(provider))
+	return m.keyService.HasActive(domainkey.Provider(provider), domainkey.DefaultProfile)
 }
 
 // GetCwd returns the current working directory

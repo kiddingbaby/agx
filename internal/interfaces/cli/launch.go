@@ -15,12 +15,42 @@ func (r *Root) handleLaunch(agentName string, args []string) int {
 		return 1
 	}
 
-	extraArgs := ""
-	if len(args) > 0 {
-		extraArgs = JoinArgs(args)
+	var (
+		profile       string
+		keyIdentifier string
+		passArgs      []string
+	)
+	for i := 0; i < len(args); i++ {
+		switch args[i] {
+		case "--profile", "-p":
+			if i+1 >= len(args) {
+				fmt.Fprintln(r.stderr, "Error: --profile requires a value")
+				return 1
+			}
+			profile = args[i+1]
+			i++
+		case "--key", "-k":
+			if i+1 >= len(args) {
+				fmt.Fprintln(r.stderr, "Error: --key requires a value")
+				return 1
+			}
+			keyIdentifier = args[i+1]
+			i++
+		default:
+			passArgs = append(passArgs, args[i])
+		}
 	}
 
-	err = r.launchSvc.Launch(agentName, dir, extraArgs)
+	extraArgs := ""
+	if len(passArgs) > 0 {
+		extraArgs = JoinArgs(passArgs)
+	}
+
+	err = r.launchSvc.LaunchWithOptions(agentName, dir, usecase.LaunchOptions{
+		Profile:       profile,
+		KeyIdentifier: keyIdentifier,
+		ExtraArgs:     extraArgs,
+	})
 	if err == nil {
 		return 0
 	}

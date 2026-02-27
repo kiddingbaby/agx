@@ -15,7 +15,8 @@ if [[ ! -x "$BIN" ]]; then
 fi
 
 TMP_HOME="$(mktemp -d)"
-trap 'rm -rf "$TMP_HOME"' EXIT
+SESSION_NAME=""
+trap '[[ -n "$SESSION_NAME" ]] && tmux kill-session -t "$SESSION_NAME" >/dev/null 2>&1 || true; rm -rf "$TMP_HOME"' EXIT
 
 export HOME="$TMP_HOME"
 export AGX_SECRET="12345678901234567890123456789012"
@@ -26,6 +27,17 @@ export AGX_SECRET="12345678901234567890123456789012"
 "$BIN" keys activate smoke-claude >/dev/null
 "$BIN" keys ls --provider claude | grep -q "smoke-claude"
 "$BIN" ls >/dev/null
+
+JSON_OUT="$("$BIN" ls --json)"
+echo "$JSON_OUT" | jq -e '.sessions == []' >/dev/null
+
+SESSION_NAME="ai-smoke-json-$$"
+tmux new-session -d -s "$SESSION_NAME"
+JSON_OUT="$("$BIN" ls --json)"
+echo "$JSON_OUT" | jq -e --arg name "$SESSION_NAME" \
+  '.sessions | any(.name == $name and (.windows | type == "number") and (.attached | type == "boolean"))' >/dev/null
+tmux kill-session -t "$SESSION_NAME" >/dev/null 2>&1 || true
+SESSION_NAME=""
 
 set +e
 OUT="$($BIN codex-cli 2>&1)"
