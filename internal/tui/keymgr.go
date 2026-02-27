@@ -41,14 +41,15 @@ type KeyManagerModel struct {
 	filter     textinput.Model
 
 	// Form state
-	formMode        string // add | edit
-	formEditingKey  string
-	formProviderIdx int
-	formName        textinput.Model
-	formBaseURL     textinput.Model
-	formKey         textinput.Model
-	formTags        textinput.Model
-	formFocus       int // 0=provider, 1=name, 2=baseURL, 3=apiKey, 4=tags
+	formMode           string // add | edit
+	formEditingKey     string
+	formEditingProfile string
+	formProviderIdx    int
+	formName           textinput.Model
+	formBaseURL        textinput.Model
+	formKey            textinput.Model
+	formTags           textinput.Model
+	formFocus          int // 0=provider, 1=name, 2=baseURL, 3=apiKey, 4=tags
 
 	// Confirm delete
 	confirmIdx    int
@@ -328,6 +329,7 @@ func (m *KeyManagerModel) activateSelected() {
 func (m *KeyManagerModel) initForm(providerIdx int) {
 	m.formMode = "add"
 	m.formEditingKey = ""
+	m.formEditingProfile = domainkey.DefaultProfile
 	m.formProviderIdx = providerIdx
 	m.formFocus = 1 // start on Name (provider already pre-selected)
 
@@ -371,6 +373,7 @@ func (m *KeyManagerModel) initEditForm(keyID string) {
 	m.initForm(providerIdx)
 	m.formMode = "edit"
 	m.formEditingKey = k.ID
+	m.formEditingProfile = domainkey.NormalizeProfileName(k.Profile)
 	m.formName.SetValue(k.Name)
 	m.formBaseURL.SetValue(k.BaseURL)
 	m.formKey.SetValue("")
@@ -489,12 +492,12 @@ func (m *KeyManagerModel) saveForm() {
 
 	provider := domainkey.Provider(providerNames[m.formProviderIdx])
 	if m.formMode == "edit" {
-		if _, err := m.keyService.Update(m.formEditingKey, provider, name, apiKey, baseURL, tags); err != nil {
+		if _, err := m.keyService.Update(m.formEditingKey, provider, m.formEditingProfile, name, apiKey, baseURL, tags); err != nil {
 			m.errMsg = fmt.Sprintf("Save failed: %v", err)
 			return
 		}
 	} else {
-		if _, err := m.keyService.Add(provider, name, apiKey, baseURL, tags); err != nil {
+		if _, err := m.keyService.Add(provider, domainkey.DefaultProfile, name, apiKey, baseURL, tags); err != nil {
 			m.errMsg = fmt.Sprintf("Save failed: %v", err)
 			return
 		}

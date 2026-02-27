@@ -60,7 +60,7 @@ func (r *Root) Execute(args []string) int {
 	case "keys":
 		return r.handleKeys(args[1:])
 	case "ls":
-		return r.handleList()
+		return r.handleList(args[1:])
 	case "attach", "a":
 		if len(args) < 2 {
 			fmt.Fprintln(r.stderr, "Usage: agx attach <session-name>")
@@ -87,8 +87,9 @@ func (r *Root) printHelp() {
 Usage:
   agx                     Open Session Dashboard (TUI)
   agx <agent> [args...]   Launch agent in current directory
+                           Optional: --profile <name> --key <id|name>
   agx keys                Open Key Manager (TUI)
-  agx ls                  List active AI sessions
+  agx ls [--json]         List active AI sessions
   agx attach <name>       Attach to session (alias: a)
   agx kill <name>         Kill a session
 
@@ -106,6 +107,8 @@ Agents:
 Examples:
   agx claude              Launch claude-code in current directory
   agx claude -c           Launch with -c flag passed through
+  agx codex --profile prod
+  agx gemini --profile prod --key my-key
   agx keys add --provider claude --name mykey --key sk-xxx
   agx keys activate mykey`)
 }

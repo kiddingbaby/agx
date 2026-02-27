@@ -2,6 +2,7 @@ package usecase
 
 import (
 	"errors"
+	"strings"
 	"testing"
 	"time"
 
@@ -9,7 +10,8 @@ import (
 )
 
 type fakeKeyRepo struct {
-	keys []domainkey.Key
+	keys     []domainkey.Key
+	profiles []domainkey.Profile
 }
 
 func (f *fakeKeyRepo) List() []domainkey.Key {
@@ -18,10 +20,11 @@ func (f *fakeKeyRepo) List() []domainkey.Key {
 	return out
 }
 
-func (f *fakeKeyRepo) Add(provider domainkey.Provider, name, apiKey, baseURL string, tags []string) (*domainkey.Key, error) {
+func (f *fakeKeyRepo) Add(provider domainkey.Provider, profile, name, apiKey, baseURL string, tags []string) (*domainkey.Key, error) {
 	k := domainkey.Key{
 		ID:        "new-id",
 		Provider:  provider,
+		Profile:   domainkey.NormalizeProfileName(profile),
 		Name:      name,
 		APIKey:    apiKey,
 		BaseURL:   baseURL,
@@ -33,12 +36,13 @@ func (f *fakeKeyRepo) Add(provider domainkey.Provider, name, apiKey, baseURL str
 	return &k, nil
 }
 
-func (f *fakeKeyRepo) Update(id string, provider domainkey.Provider, name, apiKey, baseURL string, tags []string) (*domainkey.Key, error) {
+func (f *fakeKeyRepo) Update(id string, provider domainkey.Provider, profile, name, apiKey, baseURL string, tags []string) (*domainkey.Key, error) {
 	for i := range f.keys {
 		if f.keys[i].ID != id {
 			continue
 		}
 		f.keys[i].Provider = provider
+		f.keys[i].Profile = domainkey.NormalizeProfileName(profile)
 		f.keys[i].Name = name
 		if apiKey != "" {
 			f.keys[i].APIKey = apiKey
@@ -63,11 +67,13 @@ func (f *fakeKeyRepo) Delete(id string) error {
 
 func (f *fakeKeyRepo) Activate(id string) error {
 	var provider domainkey.Provider
+	var profile string
 	found := false
 	for i := range f.keys {
 		if f.keys[i].ID == id {
 			found = true
 			provider = f.keys[i].Provider
+			profile = domainkey.NormalizeProfileName(f.keys[i].Profile)
 			f.keys[i].Active = true
 		}
 	}
@@ -75,16 +81,17 @@ func (f *fakeKeyRepo) Activate(id string) error {
 		return errors.New("key not found")
 	}
 	for i := range f.keys {
-		if f.keys[i].Provider == provider && f.keys[i].ID != id {
+		if f.keys[i].Provider == provider && domainkey.NormalizeProfileName(f.keys[i].Profile) == profile && f.keys[i].ID != id {
 			f.keys[i].Active = false
 		}
 	}
 	return nil
 }
 
-func (f *fakeKeyRepo) GetActive(provider domainkey.Provider) (*domainkey.Key, error) {
+func (f *fakeKeyRepo) GetActive(provider domainkey.Provider, profile string) (*domainkey.Key, error) {
+	profile = domainkey.NormalizeProfileName(profile)
 	for i := range f.keys {
-		if f.keys[i].Provider == provider && f.keys[i].Active {
+		if f.keys[i].Provider == provider && domainkey.NormalizeProfileName(f.keys[i].Profile) == profile && f.keys[i].Active {
 			out := f.keys[i]
 			return &out, nil
 		}
@@ -92,13 +99,57 @@ func (f *fakeKeyRepo) GetActive(provider domainkey.Provider) (*domainkey.Key, er
 	return nil, errors.New("no active key")
 }
 
-func (f *fakeKeyRepo) HasActive(provider domainkey.Provider) bool {
+func (f *fakeKeyRepo) HasActive(provider domainkey.Provider, profile string) bool {
+	profile = domainkey.NormalizeProfileName(profile)
 	for i := range f.keys {
-		if f.keys[i].Provider == provider && f.keys[i].Active {
+		if f.keys[i].Provider == provider && domainkey.NormalizeProfileName(f.keys[i].Profile) == profile && f.keys[i].Active {
 			return true
 		}
 	}
 	return false
+}
+
+func (f *fakeKeyRepo) Resolve(provider domainkey.Provider, profile, identifier string) (*domainkey.Key, error) {
+	profile = domainkey.NormalizeProfileName(profile)
+	for i := range f.keys {
+		if f.keys[i].Provider != provider || domainkey.NormalizeProfileName(f.keys[i].Profile) != profile {
+			continue
+		}
+		if identifier != "" && f.keys[i].Name != identifier && !strings.HasPrefix(f.keys[i].ID, identifier) {
+			continue
+		}
+		out := f.keys[i]
+		return &out, nil
+	}
+	return nil, errors.New("no key")
+}
+
+func (f *fakeKeyRepo) ListProfiles(provider domainkey.Provider) []domainkey.Profile {
+	out := make([]domainkey.Profile, 0)
+	for _, p := range f.profiles {
+		if p.Provider == provider {
+			out = append(out, p)
+		}
+	}
+	return out
+}
+
+func (f *fakeKeyRepo) SetProfileStrategy(provider domainkey.Provider, profile string, strategy domainkey.RotationStrategy, fixedKey string) error {
+	profile = domainkey.NormalizeProfileName(profile)
+	for i := range f.profiles {
+		if f.profiles[i].Provider == provider && f.profiles[i].Name == profile {
+			f.profiles[i].Strategy = strategy
+			f.profiles[i].FixedKey = fixedKey
+			return nil
+		}
+	}
+	f.profiles = append(f.profiles, domainkey.Profile{
+		Provider: provider,
+		Name:     profile,
+		Strategy: strategy,
+		FixedKey: fixedKey,
+	})
+	return nil
 }
 
 func TestFindByIdentifier(t *testing.T) {
@@ -150,7 +201,7 @@ func TestActivateAndDeleteByIdentifier(t *testing.T) {
 	if activated.ID != "1111-aaaa" {
 		t.Fatalf("activated id = %s", activated.ID)
 	}
-	active, err := svc.GetActive(domainkey.ProviderClaude)
+	active, err := svc.GetActive(domainkey.ProviderClaude, domainkey.DefaultProfile)
 	if err != nil {
 		t.Fatalf("GetActive error = %v", err)
 	}

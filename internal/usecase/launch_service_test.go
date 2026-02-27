@@ -33,11 +33,16 @@ func (r *recordingRuntime) KillSession(name string) error {
 }
 
 func TestLaunchServiceBuildSessionConfig(t *testing.T) {
+	t.Setenv("ANTHROPIC_API_KEY", "")
+	t.Setenv("CLAUDE_API_KEY", "")
+	t.Setenv("ANTHROPIC_BASE_URL", "")
+
 	repo := &fakeKeyRepo{
 		keys: []domainkey.Key{
 			{
 				ID:       "k1",
 				Provider: domainkey.ProviderClaude,
+				Profile:  domainkey.DefaultProfile,
 				Name:     "claude-main",
 				APIKey:   "plain-key",
 				BaseURL:  "https://api.proxy.local",
@@ -62,8 +67,64 @@ func TestLaunchServiceBuildSessionConfig(t *testing.T) {
 	if cfg.EnvVars["ANTHROPIC_API_KEY"] != "plain-key" {
 		t.Fatalf("missing api key env in cfg: %+v", cfg.EnvVars)
 	}
+	if cfg.EnvVars["CLAUDE_API_KEY"] != "plain-key" {
+		t.Fatalf("missing alias api key env in cfg: %+v", cfg.EnvVars)
+	}
 	if cfg.EnvVars["ANTHROPIC_BASE_URL"] != "https://api.proxy.local" {
 		t.Fatalf("missing base url env in cfg: %+v", cfg.EnvVars)
+	}
+}
+
+func TestLaunchServiceBuildSessionConfigWithOptions(t *testing.T) {
+	repo := &fakeKeyRepo{
+		keys: []domainkey.Key{
+			{
+				ID:       "k1",
+				Provider: domainkey.ProviderClaude,
+				Profile:  "prod",
+				Name:     "claude-prod",
+				APIKey:   "prod-key",
+				Active:   true,
+			},
+		},
+	}
+	keySvc := NewKeyService(repo)
+	rt := &recordingRuntime{}
+	launchSvc := NewLaunchService(keySvc, rt)
+
+	cfg, err := launchSvc.BuildSessionConfigWithOptions("claude", "/tmp", LaunchOptions{
+		Profile:       "prod",
+		KeyIdentifier: "claude-prod",
+		ExtraArgs:     "--continue",
+	})
+	if err != nil {
+		t.Fatalf("BuildSessionConfigWithOptions() error = %v", err)
+	}
+	if cfg.Command != "claude --continue" {
+		t.Fatalf("cfg.Command = %s, want 'claude --continue'", cfg.Command)
+	}
+	if cfg.EnvVars["ANTHROPIC_API_KEY"] != "prod-key" {
+		t.Fatalf("cfg.EnvVars ANTHROPIC_API_KEY = %q, want prod-key", cfg.EnvVars["ANTHROPIC_API_KEY"])
+	}
+}
+
+func TestLaunchServiceEnvOverridesStore(t *testing.T) {
+	t.Setenv("ANTHROPIC_API_KEY", "env-key")
+	t.Setenv("ANTHROPIC_BASE_URL", "https://env-base.local")
+
+	keySvc := NewKeyService(&fakeKeyRepo{})
+	rt := &recordingRuntime{}
+	launchSvc := NewLaunchService(keySvc, rt)
+
+	cfg, err := launchSvc.BuildSessionConfig("claude", "/tmp", "")
+	if err != nil {
+		t.Fatalf("BuildSessionConfig() error = %v", err)
+	}
+	if cfg.EnvVars["ANTHROPIC_API_KEY"] != "env-key" {
+		t.Fatalf("cfg.EnvVars[ANTHROPIC_API_KEY] = %q, want env-key", cfg.EnvVars["ANTHROPIC_API_KEY"])
+	}
+	if cfg.EnvVars["ANTHROPIC_BASE_URL"] != "https://env-base.local" {
+		t.Fatalf("cfg.EnvVars[ANTHROPIC_BASE_URL] = %q, want env base", cfg.EnvVars["ANTHROPIC_BASE_URL"])
 	}
 }
 
@@ -87,6 +148,7 @@ func TestLaunchServiceLaunchPropagatesRuntimeError(t *testing.T) {
 			{
 				ID:       "k1",
 				Provider: domainkey.ProviderClaude,
+				Profile:  domainkey.DefaultProfile,
 				Name:     "claude-main",
 				APIKey:   "plain-key",
 				Active:   true,
