@@ -7,6 +7,7 @@ import (
 	"math/big"
 	"os"
 	"path/filepath"
+	"strings"
 	"sync"
 	"syscall"
 	"time"
@@ -267,9 +268,10 @@ func (r *Repository) Resolve(provider domainkey.Provider, profile, identifier st
 
 		selectedIdx := -1
 		if identifier != "" {
-			selectedIdx = r.findKeyIndexByIdentifier(indexes, identifier)
-			if selectedIdx < 0 {
-				return errors.New("key not found")
+			var err error
+			selectedIdx, err = r.findKeyIndexByIdentifier(indexes, identifier)
+			if err != nil {
+				return err
 			}
 		} else {
 			p := r.ensureProfile(provider, profile)
@@ -364,8 +366,12 @@ func (r *Repository) SetProfileStrategy(provider domainkey.Provider, profile str
 
 		selected := -1
 		if fixedKey != "" {
-			selected = r.findKeyIndexByIdentifier(indexes, fixedKey)
-			if selected < 0 {
+			var err error
+			selected, err = r.findKeyIndexByIdentifier(indexes, fixedKey)
+			if err != nil {
+				if strings.Contains(err.Error(), "ambiguous key identifier") {
+					return err
+				}
 				return errors.New("fixed key not found")
 			}
 		} else {
@@ -464,18 +470,37 @@ func (r *Repository) findKeyIndexes(provider domainkey.Provider, profile string)
 	return indexes
 }
 
-func (r *Repository) findKeyIndexByIdentifier(indexes []int, identifier string) int {
+func (r *Repository) findKeyIndexByIdentifier(indexes []int, identifier string) (int, error) {
+	identifier = strings.TrimSpace(identifier)
+	if identifier == "" {
+		return -1, errors.New("key not found")
+	}
+
+	selected := -1
 	for _, idx := range indexes {
 		if r.keys[idx].Name == identifier {
-			return idx
+			if selected >= 0 {
+				return -1, fmt.Errorf("ambiguous key identifier: %s", identifier)
+			}
+			selected = idx
 		}
 	}
+	if selected >= 0 {
+		return selected, nil
+	}
+
 	for _, idx := range indexes {
-		if len(identifier) <= len(r.keys[idx].ID) && r.keys[idx].ID[:len(identifier)] == identifier {
-			return idx
+		if strings.HasPrefix(r.keys[idx].ID, identifier) {
+			if selected >= 0 {
+				return -1, fmt.Errorf("ambiguous key identifier: %s", identifier)
+			}
+			selected = idx
 		}
 	}
-	return -1
+	if selected >= 0 {
+		return selected, nil
+	}
+	return -1, errors.New("key not found")
 }
 
 func (r *Repository) pickFixedIndex(indexes []int, fixedKey string) int {

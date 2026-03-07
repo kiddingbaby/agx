@@ -5,6 +5,7 @@ import (
 	"strings"
 
 	domainkey "github.com/kiddingbaby/agx/internal/domain/key"
+	"github.com/kiddingbaby/agx/internal/usecase"
 )
 
 func (r *Root) handleKeys(args []string) int {
@@ -104,7 +105,7 @@ func (r *Root) handleKeysLs(args []string) int {
 				if k.Active {
 					active = "*"
 				}
-				fmt.Fprintf(r.stdout, "    %s %s  (%s)\n", active, k.Name, k.ID[:8])
+				fmt.Fprintf(r.stdout, "    %s %s  (%s)\n", active, k.Name, shortKeyID(k.ID))
 			}
 		}
 	}
@@ -180,7 +181,7 @@ func (r *Root) handleKeysAdd(args []string) int {
 		return 1
 	}
 
-	fmt.Fprintf(r.stdout, "Added key: %s (%s) profile=%s\n", k.Name, k.ID[:8], domainkey.NormalizeProfileName(k.Profile))
+	fmt.Fprintf(r.stdout, "Added key: %s (%s) profile=%s\n", k.Name, shortKeyID(k.ID), domainkey.NormalizeProfileName(k.Profile))
 	return 0
 }
 
@@ -223,7 +224,7 @@ func (r *Root) handleKeysActivate(args []string) int {
 		k, err = r.keySvc.ActivateByIdentifierInScope(provider, profileRaw, identifier)
 	}
 	if err != nil {
-		fmt.Fprintf(r.stderr, "Error: key not found: %s\n", identifier)
+		r.writeKeyLookupError(identifier, err)
 		return 1
 	}
 
@@ -270,7 +271,7 @@ func (r *Root) handleKeysDelete(args []string) int {
 		k, err = r.keySvc.DeleteByIdentifierInScope(provider, profileRaw, identifier)
 	}
 	if err != nil {
-		fmt.Fprintf(r.stderr, "Error: key not found: %s\n", identifier)
+		r.writeKeyLookupError(identifier, err)
 		return 1
 	}
 
@@ -373,4 +374,23 @@ func (r *Root) handleKeysProfileSet(args []string) int {
 	}
 	fmt.Fprintf(r.stdout, "Updated profile: %s/%s strategy=%s\n", provider, domainkey.NormalizeProfileName(profileRaw), strategy)
 	return 0
+}
+
+func shortKeyID(id string) string {
+	if len(id) <= 8 {
+		return id
+	}
+	return id[:8]
+}
+
+func (r *Root) writeKeyLookupError(identifier string, err error) {
+	if usecase.IsAmbiguousKeyIdentifierError(err) {
+		fmt.Fprintf(r.stderr, "Error: %v\n", err)
+		return
+	}
+	if usecase.IsKeyNotFoundError(err) {
+		fmt.Fprintf(r.stderr, "Error: key not found: %s\n", identifier)
+		return
+	}
+	fmt.Fprintf(r.stderr, "Error: %v\n", err)
 }

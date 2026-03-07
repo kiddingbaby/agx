@@ -169,6 +169,42 @@ func TestRepositoryResolveFixedByIdentifier(t *testing.T) {
 	}
 }
 
+func TestRepositoryResolveRejectsAmbiguousPrefix(t *testing.T) {
+	repo := newTestRepository(t)
+	_, _ = repo.Add(domainkey.ProviderClaude, "prod", "claude-a", "v1", "", nil)
+	_, _ = repo.Add(domainkey.ProviderClaude, "prod", "claude-b", "v2", "", nil)
+	if err := repo.withWriteLock(func() error {
+		repo.keys[0].ID = "dup-1111"
+		repo.keys[1].ID = "dup-2222"
+		return nil
+	}); err != nil {
+		t.Fatalf("withWriteLock() error = %v", err)
+	}
+
+	prefix := "dup"
+	if _, err := repo.Resolve(domainkey.ProviderClaude, "prod", prefix); err == nil || !strings.Contains(err.Error(), "ambiguous key identifier") {
+		t.Fatalf("Resolve(ambiguous prefix) err = %v, want ambiguous key identifier", err)
+	}
+}
+
+func TestRepositorySetProfileStrategyRejectsAmbiguousFixedKey(t *testing.T) {
+	repo := newTestRepository(t)
+	_, _ = repo.Add(domainkey.ProviderGemini, "work", "g1", "v1", "", nil)
+	_, _ = repo.Add(domainkey.ProviderGemini, "work", "g2", "v2", "", nil)
+	if err := repo.withWriteLock(func() error {
+		repo.keys[0].ID = "fix-1111"
+		repo.keys[1].ID = "fix-2222"
+		return nil
+	}); err != nil {
+		t.Fatalf("withWriteLock() error = %v", err)
+	}
+
+	prefix := "fix"
+	if err := repo.SetProfileStrategy(domainkey.ProviderGemini, "work", domainkey.StrategyFixed, prefix); err == nil || !strings.Contains(err.Error(), "ambiguous key identifier") {
+		t.Fatalf("SetProfileStrategy(ambiguous fixed key) err = %v, want ambiguous key identifier", err)
+	}
+}
+
 func TestRepositoryUpdatePatchKeepsAPIKeyWhenEmpty(t *testing.T) {
 	repo := newTestRepository(t)
 	k, err := repo.Add(domainkey.ProviderClaude, "default", "old", "old-key", "https://old.example", []string{"old"})

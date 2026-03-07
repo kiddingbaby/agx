@@ -70,6 +70,16 @@ func (r *Root) handleLaunch(agentName string, args []string) int {
 		fmt.Fprintln(r.stderr, "Use 'agx keys' to add and activate a key.")
 		return 1
 	}
+	if usecase.IsAmbiguousKeyIdentifierError(err) {
+		fmt.Fprintf(r.stderr, "Error: %v\n", err)
+		fmt.Fprintln(r.stderr, "Use a full key name or a longer ID prefix.")
+		return 1
+	}
+	if usecase.IsKeyNotFoundError(err) {
+		fmt.Fprintf(r.stderr, "Error: %v\n", err)
+		fmt.Fprintln(r.stderr, "Use 'agx keys ls' to inspect available keys.")
+		return 1
+	}
 	fmt.Fprintf(r.stderr, "Error: %v\n", err)
 	return 1
 }
