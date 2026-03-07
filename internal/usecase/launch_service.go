@@ -2,6 +2,8 @@ package usecase
 
 import (
 	"os"
+	"path/filepath"
+	"strconv"
 	"strings"
 
 	domainagent "github.com/kiddingbaby/agx/internal/domain/agent"
@@ -55,27 +57,30 @@ func (s *LaunchService) BuildSessionConfigWithOptions(agentName, dir string, opt
 	profile := domainkey.NormalizeProfileName(opts.Profile)
 
 	var (
-		activeKey *domainkey.Key
-		err       error
+		activeKey  *domainkey.Key
+		err        error
+		keyFromEnv bool
 	)
 	if strings.TrimSpace(opts.KeyIdentifier) != "" {
 		activeKey, err = s.keyService.Resolve(provider, profile, opts.KeyIdentifier)
 		if err != nil {
-			return domainsession.SessionConfig{}, &NoActiveKeyError{Provider: agent.Provider}
+			return domainsession.SessionConfig{}, err
 		}
 	} else {
-		_, envAPIKey := firstEnvValue(envNames(agent))
-		if envAPIKey != "" {
+		// Prefer agx-managed key selection strategy. Only fallback to env
+		// when provider/profile has no key in the key store.
+		activeKey, err = s.keyService.Resolve(provider, profile, "")
+		if err != nil {
+			_, envAPIKey := firstEnvValue(envNames(agent))
+			if envAPIKey == "" {
+				return domainsession.SessionConfig{}, &NoActiveKeyError{Provider: agent.Provider}
+			}
 			activeKey = &domainkey.Key{
 				Provider: provider,
 				Profile:  profile,
 				APIKey:   envAPIKey,
 			}
-		} else {
-			activeKey, err = s.keyService.Resolve(provider, profile, "")
-			if err != nil {
-				return domainsession.SessionConfig{}, &NoActiveKeyError{Provider: agent.Provider}
-			}
+			keyFromEnv = true
 		}
 	}
 
@@ -89,7 +94,11 @@ func (s *LaunchService) BuildSessionConfigWithOptions(agentName, dir string, opt
 
 	baseURL := activeKey.BaseURL
 	_, envBaseURL := firstEnvValue(baseURLEnvNames)
-	if envBaseURL != "" {
+	// Keep launch strategy deterministic: store-selected key base URL wins.
+	// Env base URL is only fallback, or primary when key came from env fallback.
+	if keyFromEnv && envBaseURL != "" {
+		baseURL = envBaseURL
+	} else if !keyFromEnv && baseURL == "" && envBaseURL != "" {
 		baseURL = envBaseURL
 	}
 
@@ -111,6 +120,9 @@ func (s *LaunchService) BuildSessionConfigWithOptions(agentName, dir string, opt
 }
 
 func envNames(agent domainagent.Agent) []string {
+	if agent.Name == "codex-cli" {
+		return []string{resolveCodexEnvKey()}
+	}
 	if len(agent.EnvVars) > 0 {
 		return uniqStrings(agent.EnvVars)
 	}
@@ -154,4 +166,103 @@ func uniqStrings(in []string) []string {
 		out = append(out, v)
 	}
 	return out
+}
+
+const defaultCodexEnvKey = "OPENAI_API_KEY"
+
+// resolveCodexEnvKey resolves env_key from ~/.codex/config.toml selected provider.
+// Falls back to OPENAI_API_KEY when config is missing/invalid.
+func resolveCodexEnvKey() string {
+	home, err := os.UserHomeDir()
+	if err != nil || strings.TrimSpace(home) == "" {
+		return defaultCodexEnvKey
+	}
+	envKey, err := parseCodexEnvKey(filepath.Join(home, ".codex", "config.toml"))
+	if err != nil || strings.TrimSpace(envKey) == "" {
+		return defaultCodexEnvKey
+	}
+	return envKey
+}
+
+func parseCodexEnvKey(path string) (string, error) {
+	raw, err := os.ReadFile(path)
+	if err != nil {
+		return "", err
+	}
+
+	var (
+		selectedProvider string
+		currentProvider  string
+		envKeys          = map[string]string{}
+	)
+
+	lines := strings.Split(string(raw), "\n")
+	for _, line := range lines {
+		l := strings.TrimSpace(line)
+		if l == "" || strings.HasPrefix(l, "#") {
+			continue
+		}
+
+		if strings.HasPrefix(l, "[") && strings.HasSuffix(l, "]") {
+			section := strings.TrimSpace(l[1 : len(l)-1])
+			currentProvider = ""
+			const prefix = "model_providers."
+			if strings.HasPrefix(section, prefix) {
+				name := strings.TrimSpace(strings.TrimPrefix(section, prefix))
+				currentProvider = strings.Trim(name, "\"")
+			}
+			continue
+		}
+
+		if currentProvider == "" {
+			if v, ok := parseTomlStringAssign(l, "model_provider"); ok {
+				selectedProvider = v
+			}
+			continue
+		}
+
+		if v, ok := parseTomlStringAssign(l, "env_key"); ok {
+			envKeys[currentProvider] = v
+		}
+	}
+
+	if selectedProvider == "" {
+		return "", nil
+	}
+	return strings.TrimSpace(envKeys[selectedProvider]), nil
+}
+
+func parseTomlStringAssign(line, key string) (string, bool) {
+	if !strings.HasPrefix(line, key) {
+		return "", false
+	}
+	rest := strings.TrimSpace(strings.TrimPrefix(line, key))
+	if !strings.HasPrefix(rest, "=") {
+		return "", false
+	}
+	rest = strings.TrimSpace(strings.TrimPrefix(rest, "="))
+	if !strings.HasPrefix(rest, "\"") {
+		return "", false
+	}
+
+	escaped := false
+	for i := 1; i < len(rest); i++ {
+		switch rest[i] {
+		case '\\':
+			if !escaped {
+				escaped = true
+				continue
+			}
+		case '"':
+			if !escaped {
+				unquoted, err := strconv.Unquote(rest[:i+1])
+				if err != nil {
+					return "", false
+				}
+				return unquoted, true
+			}
+		}
+		escaped = false
+	}
+	return "", false
 }

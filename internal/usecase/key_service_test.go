@@ -111,17 +111,45 @@ func (f *fakeKeyRepo) HasActive(provider domainkey.Provider, profile string) boo
 
 func (f *fakeKeyRepo) Resolve(provider domainkey.Provider, profile, identifier string) (*domainkey.Key, error) {
 	profile = domainkey.NormalizeProfileName(profile)
+	var exact *domainkey.Key
 	for i := range f.keys {
 		if f.keys[i].Provider != provider || domainkey.NormalizeProfileName(f.keys[i].Profile) != profile {
 			continue
 		}
-		if identifier != "" && f.keys[i].Name != identifier && !strings.HasPrefix(f.keys[i].ID, identifier) {
+		if identifier == "" {
+			out := f.keys[i]
+			return &out, nil
+		}
+		if f.keys[i].Name == identifier {
+			if exact != nil {
+				return nil, &AmbiguousKeyIdentifierError{Identifier: identifier}
+			}
+			out := f.keys[i]
+			exact = &out
+		}
+	}
+	if exact != nil {
+		return exact, nil
+	}
+
+	var prefix *domainkey.Key
+	for i := range f.keys {
+		if f.keys[i].Provider != provider || domainkey.NormalizeProfileName(f.keys[i].Profile) != profile {
 			continue
 		}
+		if !strings.HasPrefix(f.keys[i].ID, identifier) {
+			continue
+		}
+		if prefix != nil {
+			return nil, &AmbiguousKeyIdentifierError{Identifier: identifier}
+		}
 		out := f.keys[i]
-		return &out, nil
+		prefix = &out
 	}
-	return nil, errors.New("no key")
+	if prefix != nil {
+		return prefix, nil
+	}
+	return nil, &KeyNotFoundError{Identifier: identifier}
 }
 
 func (f *fakeKeyRepo) ListProfiles(provider domainkey.Provider) []domainkey.Profile {
@@ -182,6 +210,35 @@ func TestFindByIdentifier(t *testing.T) {
 	}
 	if _, err := svc.FindByIdentifier("missing"); !IsKeyNotFoundError(err) {
 		t.Fatalf("FindByIdentifier(missing) err = %v, want KeyNotFoundError", err)
+	}
+}
+
+func TestFindByIdentifierAmbiguousPrefix(t *testing.T) {
+	repo := &fakeKeyRepo{
+		keys: []domainkey.Key{
+			{ID: "abcd-1111", Name: "claude-main", Provider: domainkey.ProviderClaude},
+			{ID: "abcd-2222", Name: "claude-backup", Provider: domainkey.ProviderClaude},
+		},
+	}
+	svc := NewKeyService(repo)
+
+	if _, err := svc.FindByIdentifier("abcd"); !IsAmbiguousKeyIdentifierError(err) {
+		t.Fatalf("FindByIdentifier(ambiguous) err = %v, want AmbiguousKeyIdentifierError", err)
+	}
+}
+
+func TestFindByIdentifierInScopeAmbiguousPrefix(t *testing.T) {
+	repo := &fakeKeyRepo{
+		keys: []domainkey.Key{
+			{ID: "prod-1111", Name: "claude-main", Provider: domainkey.ProviderClaude, Profile: "prod"},
+			{ID: "prod-2222", Name: "claude-backup", Provider: domainkey.ProviderClaude, Profile: "prod"},
+			{ID: "prod-3333", Name: "other", Provider: domainkey.ProviderClaude, Profile: "default"},
+		},
+	}
+	svc := NewKeyService(repo)
+
+	if _, err := svc.FindByIdentifierInScope(domainkey.ProviderClaude, "prod", "prod"); !IsAmbiguousKeyIdentifierError(err) {
+		t.Fatalf("FindByIdentifierInScope(ambiguous) err = %v, want AmbiguousKeyIdentifierError", err)
 	}
 }
 

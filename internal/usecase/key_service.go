@@ -49,7 +49,16 @@ func (s *KeyService) Activate(id string) error {
 }
 
 func (s *KeyService) Resolve(provider domainkey.Provider, profile, identifier string) (*domainkey.Key, error) {
-	return s.repo.Resolve(provider, domainkey.NormalizeProfileName(profile), identifier)
+	profile = domainkey.NormalizeProfileName(profile)
+	if strings.TrimSpace(identifier) == "" {
+		return s.repo.Resolve(provider, profile, "")
+	}
+
+	matched, err := s.FindByIdentifierInScope(provider, profile, identifier)
+	if err != nil {
+		return nil, err
+	}
+	return s.repo.Resolve(provider, profile, matched.ID)
 }
 
 func (s *KeyService) SetProfileStrategy(provider domainkey.Provider, profile string, strategy domainkey.RotationStrategy, fixedKey string) error {
@@ -57,27 +66,14 @@ func (s *KeyService) SetProfileStrategy(provider domainkey.Provider, profile str
 }
 
 func (s *KeyService) FindByIdentifier(identifier string) (*domainkey.Key, error) {
-	keys := s.repo.List()
-	var prefixMatch *domainkey.Key
-	for i := range keys {
-		if keys[i].Name == identifier {
-			return &keys[i], nil
-		}
-		if prefixMatch == nil && strings.HasPrefix(keys[i].ID, identifier) {
-			prefixMatch = &keys[i]
-		}
-	}
-	if prefixMatch != nil {
-		return prefixMatch, nil
-	}
-	return nil, &KeyNotFoundError{Identifier: identifier}
+	return findKeyByIdentifier(s.repo.List(), identifier)
 }
 
 func (s *KeyService) FindByIdentifierInScope(provider domainkey.Provider, profile, identifier string) (*domainkey.Key, error) {
 	keys := s.repo.List()
 	profile = domainkey.NormalizeProfileName(profile)
 
-	var prefixMatch *domainkey.Key
+	filtered := make([]domainkey.Key, 0, len(keys))
 	for i := range keys {
 		if keys[i].Provider != provider {
 			continue
@@ -85,12 +81,40 @@ func (s *KeyService) FindByIdentifierInScope(provider domainkey.Provider, profil
 		if domainkey.NormalizeProfileName(keys[i].Profile) != profile {
 			continue
 		}
-		if keys[i].Name == identifier {
-			return &keys[i], nil
+		filtered = append(filtered, keys[i])
+	}
+	return findKeyByIdentifier(filtered, identifier)
+}
+
+func findKeyByIdentifier(keys []domainkey.Key, identifier string) (*domainkey.Key, error) {
+	identifier = strings.TrimSpace(identifier)
+	if identifier == "" {
+		return nil, &KeyNotFoundError{}
+	}
+
+	var exactMatch *domainkey.Key
+	for i := range keys {
+		if keys[i].Name != identifier {
+			continue
 		}
-		if prefixMatch == nil && strings.HasPrefix(keys[i].ID, identifier) {
-			prefixMatch = &keys[i]
+		if exactMatch != nil {
+			return nil, &AmbiguousKeyIdentifierError{Identifier: identifier}
 		}
+		exactMatch = &keys[i]
+	}
+	if exactMatch != nil {
+		return exactMatch, nil
+	}
+
+	var prefixMatch *domainkey.Key
+	for i := range keys {
+		if !strings.HasPrefix(keys[i].ID, identifier) {
+			continue
+		}
+		if prefixMatch != nil {
+			return nil, &AmbiguousKeyIdentifierError{Identifier: identifier}
+		}
+		prefixMatch = &keys[i]
 	}
 	if prefixMatch != nil {
 		return prefixMatch, nil

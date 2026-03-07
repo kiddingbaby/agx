@@ -40,6 +40,22 @@ func (e *KeyNotFoundError) Is(target error) bool {
 	return ok
 }
 
+type AmbiguousKeyIdentifierError struct {
+	Identifier string
+}
+
+func (e *AmbiguousKeyIdentifierError) Error() string {
+	if e.Identifier == "" {
+		return "ambiguous key identifier"
+	}
+	return fmt.Sprintf("ambiguous key identifier: %s", e.Identifier)
+}
+
+func (e *AmbiguousKeyIdentifierError) Is(target error) bool {
+	_, ok := target.(*AmbiguousKeyIdentifierError)
+	return ok
+}
+
 // RuntimeError wraps failures from SessionRuntime operations.
 type RuntimeError struct {
 	Operation string
@@ -72,6 +88,11 @@ func IsNoActiveKeyError(err error) bool {
 
 func IsKeyNotFoundError(err error) bool {
 	var target *KeyNotFoundError
+	return errors.As(err, &target)
+}
+
+func IsAmbiguousKeyIdentifierError(err error) bool {
+	var target *AmbiguousKeyIdentifierError
 	return errors.As(err, &target)
 }
 
