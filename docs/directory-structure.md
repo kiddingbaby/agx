@@ -32,7 +32,12 @@ agx/
 │   ├── usecase/
 │   └── tui/          # Bubble Tea model 实现
 ├── docs/
-│   └── workflow.md
+│   ├── architecture.md
+│   ├── directory-structure.md
+│   ├── index.md
+│   ├── key-manager.md
+│   ├── key-orchestration-v2.md
+│   └── refactor-roadmap.md
 ├── .workflow/
 │   ├── docs/
 │   │   ├── DESIGN.md
@@ -44,9 +49,9 @@ agx/
 ├── tests/
 │   ├── integration/
 │   └── e2e/
-├── DESIGN.md
-├── SPEC.md
-└── TODO.md
+├── README.md
+├── Makefile
+└── go.mod
 ```
 
 ## 2. 依赖规则（落地约束）

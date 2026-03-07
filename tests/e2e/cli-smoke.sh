@@ -2,7 +2,7 @@
 set -euo pipefail
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
-BIN="${1:-$ROOT/.tmp/agx-smoke}"
+BIN="${1:-$ROOT/.build/agx-smoke}"
 
 if ! command -v tmux >/dev/null 2>&1; then
   echo "[skip] tmux not found"

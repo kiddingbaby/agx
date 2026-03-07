@@ -1,5 +1,7 @@
 # Binary
 /agx
+.build/
+.tmp/
 
 # IDE
 .idea/

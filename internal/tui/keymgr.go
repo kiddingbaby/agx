@@ -28,17 +28,19 @@ type KeyManagerModel struct {
 	keyService *usecase.KeyService
 	keys       []domainkey.Key
 
-	view       KeyMgrView
-	cursor     int
-	keyRows    []keyRow // flat list: provider headers + key entries
-	width      int
-	height     int
-	quitting   bool
-	switchBack bool   // signal to switch back to dashboard
-	errMsg     string // error message to display in status bar
-	pendingG   bool
-	filterMode bool
-	filter     textinput.Model
+	view             KeyMgrView
+	cursor           int
+	selectedProvider int
+	keyRows          []keyRow // keys for current provider
+	showDetails      bool
+	width            int
+	height           int
+	quitting         bool
+	switchBack       bool   // signal to switch back to dashboard
+	errMsg           string // error message to display in status bar
+	pendingG         bool
+	filterMode       bool
+	filter           textinput.Model
 
 	// Form state
 	formMode           string // add | edit
@@ -50,6 +52,7 @@ type KeyManagerModel struct {
 	formKey            textinput.Model
 	formTags           textinput.Model
 	formFocus          int // 0=provider, 1=name, 2=baseURL, 3=apiKey, 4=tags
+	formInsertMode     bool
 
 	// Confirm delete
 	confirmIdx    int
@@ -58,10 +61,8 @@ type KeyManagerModel struct {
 
 // keyRow represents a selectable row in the key list
 type keyRow struct {
-	keyID    string // empty for provider header
-	provider domainkey.Provider
-	isHeader bool
-	display  string
+	keyID   string
+	display string
 }
 
 var providers = []domainkey.Provider{domainkey.ProviderClaude, domainkey.ProviderOpenAI, domainkey.ProviderGemini}
@@ -81,9 +82,10 @@ func NewKeyManagerModel(keySvc *usecase.KeyService) KeyManagerModel {
 	filter.CharLimit = 100
 	filter.Width = 40
 	m := KeyManagerModel{
-		keyService: keySvc,
-		view:       KeyMgrViewList,
-		filter:     filter,
+		keyService:       keySvc,
+		view:             KeyMgrViewList,
+		selectedProvider: 0,
+		filter:           filter,
 	}
 	m.refreshKeys()
 	m.buildKeyRows()
@@ -153,6 +155,15 @@ func (m KeyManagerModel) updateList(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	case "esc":
 		m.switchBack = true
 		return m, tea.Quit
+	case "h", "left":
+		m.selectProvider(m.selectedProvider - 1)
+	case "l", "right":
+		m.selectProvider(m.selectedProvider + 1)
+	case "1", "2", "3":
+		idx := int(k[0] - '1')
+		if idx >= 0 && idx < len(providers) {
+			m.selectProvider(idx)
+		}
 	case "j", "down":
 		m.moveDown()
 	case "k", "up":
@@ -175,18 +186,21 @@ func (m KeyManagerModel) updateList(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	case "enter":
 		m.activateSelected()
 	case "a":
-		providerIdx := m.currentProviderIdx()
-		m.initForm(providerIdx)
+		m.initForm(m.selectedProvider)
 		m.view = KeyMgrViewForm
 		return m, textinput.Blink
+	case "i":
+		if len(m.keyRows) > 0 {
+			m.showDetails = !m.showDetails
+		}
 	case "e":
-		if m.cursor < len(m.keyRows) && m.keyRows[m.cursor].keyID != "" {
+		if m.cursor < len(m.keyRows) {
 			m.initEditForm(m.keyRows[m.cursor].keyID)
 			m.view = KeyMgrViewForm
 			return m, textinput.Blink
 		}
 	case "d":
-		if m.cursor < len(m.keyRows) && m.keyRows[m.cursor].keyID != "" {
+		if m.cursor < len(m.keyRows) {
 			m.confirmIdx = m.cursor
 			m.confirmCursor = 0 // default to Cancel
 			m.view = KeyMgrViewConfirm
@@ -198,41 +212,36 @@ func (m KeyManagerModel) updateList(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	return m, nil
 }
 
-// buildKeyRows creates a flat list with provider headers and key entries.
-// Provider headers are always present so navigation works even with no keys.
+// buildKeyRows rebuilds key rows for the currently selected provider.
 func (m *KeyManagerModel) buildKeyRows() {
 	// Dynamic column widths: active(2) + name + gap(2) + tags + gap(2) + date(10) + padding(6)
 	nameW, tagsW := m.colWidths()
 
 	m.keyRows = nil
-	for _, provider := range providers {
-		// Add provider header row (always selectable)
-		m.keyRows = append(m.keyRows, keyRow{
-			keyID:    "",
-			provider: provider,
-			isHeader: true,
-			display:  strings.ToUpper(string(provider)),
-		})
-		// Add key rows for this provider
-		for _, k := range m.keys {
-			if k.Provider == provider && m.matchesFilter(k) {
-				active := "  "
-				if k.Active {
-					active = "* "
-				}
-				tagsStr := "-"
-				if len(k.Tags) > 0 {
-					tagsStr = strings.Join(k.Tags, ", ")
-				}
-				display := fmt.Sprintf("%s%-*s  %-*s  %s",
-					active,
-					nameW, truncate(k.Name, nameW),
-					tagsW, truncate(tagsStr, tagsW),
-					displayDate(k).Format("2006-01-02"))
-				m.keyRows = append(m.keyRows, keyRow{keyID: k.ID, provider: provider, display: display})
-			}
-		}
+	if m.selectedProvider < 0 || m.selectedProvider >= len(providers) {
+		m.selectedProvider = 0
 	}
+	provider := providers[m.selectedProvider]
+	for _, k := range m.keys {
+		if k.Provider != provider || !m.matchesFilter(k) {
+			continue
+		}
+		active := "  "
+		if k.Active {
+			active = "* "
+		}
+		tagsStr := "-"
+		if len(k.Tags) > 0 {
+			tagsStr = strings.Join(k.Tags, ", ")
+		}
+		display := fmt.Sprintf("%s%-*s  %-*s  %s",
+			active,
+			nameW, truncate(k.Name, nameW),
+			tagsW, truncate(tagsStr, tagsW),
+			displayDate(k).Format("2006-01-02"))
+		m.keyRows = append(m.keyRows, keyRow{keyID: k.ID, display: display})
+	}
+
 	// Clamp cursor
 	maxIdx := len(m.keyRows) - 1
 	if m.cursor > maxIdx {
@@ -240,6 +249,9 @@ func (m *KeyManagerModel) buildKeyRows() {
 	}
 	if m.cursor < 0 {
 		m.cursor = 0
+	}
+	if len(m.keyRows) == 0 {
+		m.showDetails = false
 	}
 }
 
@@ -296,17 +308,19 @@ func (m *KeyManagerModel) moveUp() {
 	}
 }
 
-// currentProviderIdx returns the provider index for the row at cursor
-func (m *KeyManagerModel) currentProviderIdx() int {
-	if m.cursor < len(m.keyRows) {
-		p := m.keyRows[m.cursor].provider
-		for i, pn := range providerNames {
-			if domainkey.Provider(pn) == p {
-				return i
-			}
-		}
+func (m *KeyManagerModel) selectProvider(idx int) {
+	if idx < 0 {
+		idx = len(providers) - 1
 	}
-	return 0
+	if idx >= len(providers) {
+		idx = 0
+	}
+	if m.selectedProvider == idx {
+		return
+	}
+	m.selectedProvider = idx
+	m.cursor = 0
+	m.buildKeyRows()
 }
 
 func (m *KeyManagerModel) activateSelected() {
@@ -332,12 +346,12 @@ func (m *KeyManagerModel) initForm(providerIdx int) {
 	m.formEditingProfile = domainkey.DefaultProfile
 	m.formProviderIdx = providerIdx
 	m.formFocus = 1 // start on Name (provider already pre-selected)
+	m.formInsertMode = false
 
 	m.formName = textinput.New()
 	m.formName.Placeholder = "my-key"
 	m.formName.CharLimit = 30
 	m.formName.Width = 30
-	m.formName.Focus() // auto-focus name field
 
 	m.formBaseURL = textinput.New()
 	m.formBaseURL.Placeholder = baseURLPlaceholders[providerIdx]
@@ -355,6 +369,7 @@ func (m *KeyManagerModel) initForm(providerIdx int) {
 	m.formTags.Placeholder = "cache, code"
 	m.formTags.CharLimit = 100
 	m.formTags.Width = 30
+	m.updateFormFocus()
 }
 
 func (m *KeyManagerModel) initEditForm(keyID string) {
@@ -390,62 +405,122 @@ func (m KeyManagerModel) getKeyByID(id string) (domainkey.Key, bool) {
 	return domainkey.Key{}, false
 }
 
+func (m KeyManagerModel) selectedKey() (domainkey.Key, bool) {
+	if m.cursor < 0 || m.cursor >= len(m.keyRows) {
+		return domainkey.Key{}, false
+	}
+	return m.getKeyByID(m.keyRows[m.cursor].keyID)
+}
+
 func (m KeyManagerModel) updateForm(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	m.errMsg = "" // clear error on any key press
 	k := msg.String()
 
+	if m.formInsertMode {
+		switch k {
+		case "esc":
+			m.formInsertMode = false
+			m.updateFormFocus()
+			return m, nil
+		case "enter":
+			m.saveForm()
+			if m.errMsg != "" {
+				return m, nil
+			}
+			m.view = KeyMgrViewList
+			return m, nil
+		case "ctrl+u":
+			m.clearCurrentFormField()
+			return m, nil
+		}
+
+		// Forward to active input in INSERT mode.
+		var cmd tea.Cmd
+		switch m.formFocus {
+		case 0:
+			switch k {
+			case "left", "h":
+				m.formProviderIdx = (m.formProviderIdx + len(providerNames) - 1) % len(providerNames)
+				m.formBaseURL.Placeholder = baseURLPlaceholders[m.formProviderIdx]
+			case "right", "l":
+				m.formProviderIdx = (m.formProviderIdx + 1) % len(providerNames)
+				m.formBaseURL.Placeholder = baseURLPlaceholders[m.formProviderIdx]
+			}
+		case 1:
+			m.formName, cmd = m.formName.Update(msg)
+		case 2:
+			m.formBaseURL, cmd = m.formBaseURL.Update(msg)
+		case 3:
+			m.formKey, cmd = m.formKey.Update(msg)
+		case 4:
+			m.formTags, cmd = m.formTags.Update(msg)
+		}
+		return m, cmd
+	}
+
+	// NORMAL mode: vim-style navigation.
 	switch k {
 	case "esc":
 		m.view = KeyMgrViewList
 		return m, nil
-	case "tab", "shift+tab":
-		if k == "tab" {
-			m.formFocus = (m.formFocus + 1) % formFieldCount
-		} else {
-			m.formFocus = (m.formFocus + formFieldCount - 1) % formFieldCount
-		}
+	case "i":
+		m.formInsertMode = true
 		m.updateFormFocus()
 		return m, textinput.Blink
-	case "enter":
+	case "x":
+		m.clearCurrentFormField()
+		return m, nil
+	case "j", "down":
+		if m.formFocus < formFieldCount-1 {
+			m.formFocus++
+			m.updateFormFocus()
+		}
+		return m, nil
+	case "k", "up":
+		if m.formFocus > 0 {
+			m.formFocus--
+			m.updateFormFocus()
+		}
+		return m, nil
+	case "h", "left":
 		if m.formFocus == 0 {
-			// Cycle provider on enter when focused on provider
+			m.formProviderIdx = (m.formProviderIdx + len(providerNames) - 1) % len(providerNames)
+			m.formBaseURL.Placeholder = baseURLPlaceholders[m.formProviderIdx]
+		}
+		return m, nil
+	case "l", "right":
+		if m.formFocus == 0 {
 			m.formProviderIdx = (m.formProviderIdx + 1) % len(providerNames)
 			m.formBaseURL.Placeholder = baseURLPlaceholders[m.formProviderIdx]
-			return m, nil
 		}
-		// Try to save
+		return m, nil
+	case "enter":
 		m.saveForm()
 		if m.errMsg != "" {
-			return m, nil // stay on form, show error
+			return m, nil
 		}
 		m.view = KeyMgrViewList
 		return m, nil
 	}
 
-	// Forward to active input
-	var cmd tea.Cmd
-	switch m.formFocus {
-	case 0:
-		// Provider selection: h/l or left/right to cycle
-		switch k {
-		case "left", "h":
-			m.formProviderIdx = (m.formProviderIdx + len(providerNames) - 1) % len(providerNames)
-			m.formBaseURL.Placeholder = baseURLPlaceholders[m.formProviderIdx]
-		case "right", "l":
-			m.formProviderIdx = (m.formProviderIdx + 1) % len(providerNames)
-			m.formBaseURL.Placeholder = baseURLPlaceholders[m.formProviderIdx]
-		}
-	case 1:
-		m.formName, cmd = m.formName.Update(msg)
-	case 2:
-		m.formBaseURL, cmd = m.formBaseURL.Update(msg)
-	case 3:
-		m.formKey, cmd = m.formKey.Update(msg)
-	case 4:
-		m.formTags, cmd = m.formTags.Update(msg)
-	}
+	return m, nil
+}
 
-	return m, cmd
+func (m *KeyManagerModel) clearCurrentFormField() {
+	switch m.formFocus {
+	case 1:
+		m.formName.SetValue("")
+		m.formName.CursorStart()
+	case 2:
+		m.formBaseURL.SetValue("")
+		m.formBaseURL.CursorStart()
+	case 3:
+		m.formKey.SetValue("")
+		m.formKey.CursorStart()
+	case 4:
+		m.formTags.SetValue("")
+		m.formTags.CursorStart()
+	}
 }
 
 func (m *KeyManagerModel) updateFormFocus() {
@@ -453,6 +528,9 @@ func (m *KeyManagerModel) updateFormFocus() {
 	m.formBaseURL.Blur()
 	m.formKey.Blur()
 	m.formTags.Blur()
+	if !m.formInsertMode {
+		return
+	}
 
 	switch m.formFocus {
 	case 1:
@@ -556,38 +634,13 @@ func (m KeyManagerModel) View() string {
 func (m KeyManagerModel) viewList() string {
 	var lines []string
 
-	for i, row := range m.keyRows {
-		if row.isHeader {
-			// Add blank line before non-first provider headers
-			if i > 0 {
-				lines = append(lines, "")
-			}
-			header := WarningStyle.Render(row.display)
-			separator := MutedStyle.Render("────────────────────────────────────────────────")
-
-			if i == m.cursor {
-				header = SelectedStyle.Render("> " + row.display)
-			}
-			lines = append(lines, header, separator)
-
-			// Check if this provider has any keys
-			hasKeys := false
-			for j := i + 1; j < len(m.keyRows); j++ {
-				if m.keyRows[j].isHeader {
-					break
-				}
-				hasKeys = true
-				break
-			}
-			if !hasKeys {
-				lines = append(lines, MutedStyle.Render("  (no keys - press 'a' to add)"))
-			}
-		} else {
+	if len(m.keyRows) == 0 {
+		lines = append(lines, MutedStyle.Render("  (no keys - press 'a' to add)"))
+	} else {
+		for i, row := range m.keyRows {
 			style := NormalStyle
-			if row.keyID != "" {
-				if k, ok := m.getKeyByID(row.keyID); ok && k.Active {
-					style = SuccessStyle
-				}
+			if k, ok := m.getKeyByID(row.keyID); ok && k.Active {
+				style = SuccessStyle
 			}
 			line := "  " + style.Render(row.display)
 			if i == m.cursor {
@@ -602,19 +655,27 @@ func (m KeyManagerModel) viewList() string {
 	if m.filterMode || strings.TrimSpace(m.filter.Value()) != "" {
 		filterLine = "Filter: " + m.filter.View() + "\n\n"
 	}
+	detailBlock := ""
+	if m.showDetails {
+		detailBlock = "\n\n" + m.viewSelectedKeyDetails()
+	}
+	providerTabs := m.renderProviderTabsWithSelected(m.selectedProvider)
 
 	title := " KEY MANAGER "
 	panel := PanelFocusStyle.
 		Width(m.width - 2).
 		Height(m.height - 3).
-		Render(TitleStyle.Render(title) + "\n\n" + filterLine + content)
+		Render(TitleStyle.Render(title) + "\n\n" + providerTabs + "\n\n" + filterLine + content + detailBlock)
 
-	bar := fmt.Sprintf(" %s │ %s Activate │ %s Add │ %s Edit │ %s Delete │ %s Filter │ %s/%s Nav │ %s Back",
+	bar := fmt.Sprintf(" %s │ %s Activate │ %s Add │ %s Edit │ %s Delete │ %s Details │ %s/%s Provider │ %s Filter │ %s/%s Nav │ %s Back",
 		WarningStyle.Render("Keys"),
 		SuccessStyle.Render("Enter"),
 		SuccessStyle.Render("a"),
 		SuccessStyle.Render("e"),
 		SuccessStyle.Render("d"),
+		SuccessStyle.Render("i"),
+		SuccessStyle.Render("h"),
+		SuccessStyle.Render("l"),
 		SuccessStyle.Render("/"),
 		SuccessStyle.Render("gg"),
 		SuccessStyle.Render("G"),
@@ -628,70 +689,161 @@ func (m KeyManagerModel) viewList() string {
 	return lipgloss.JoinVertical(lipgloss.Left, panel, statusBar)
 }
 
+func (m KeyManagerModel) renderProviderTabsWithSelected(selected int) string {
+	base := lipgloss.NewStyle().
+		Padding(0, 1).
+		Border(lipgloss.RoundedBorder()).
+		BorderForeground(Border).
+		Foreground(FgSecondary)
+	active := base.Copy().
+		BorderForeground(Accent).
+		Foreground(Accent).
+		Bold(true)
+
+	tabs := make([]string, 0, len(providers))
+	for i, provider := range providers {
+		label := strings.ToUpper(string(provider))
+		if i == selected {
+			tabs = append(tabs, active.Render(label))
+			continue
+		}
+		tabs = append(tabs, base.Render(label))
+	}
+
+	return lipgloss.JoinHorizontal(lipgloss.Top, tabs...)
+}
+
+func (m KeyManagerModel) viewSelectedKeyDetails() string {
+	k, ok := m.selectedKey()
+	if !ok {
+		return MutedStyle.Render("Details: select a key to view.")
+	}
+
+	tags := "-"
+	if len(k.Tags) > 0 {
+		tags = strings.Join(k.Tags, ", ")
+	}
+	baseURL := k.BaseURL
+	if strings.TrimSpace(baseURL) == "" {
+		baseURL = "(default)"
+	}
+	profile := domainkey.NormalizeProfileName(k.Profile)
+	active := "no"
+	if k.Active {
+		active = "yes"
+	}
+
+	return strings.Join([]string{
+		SectionHeaderStyle.Render("DETAILS"),
+		fmt.Sprintf("  name: %s", AccentStyle.Render(k.Name)),
+		fmt.Sprintf("  id: %s", MutedStyle.Render(k.ID)),
+		fmt.Sprintf("  provider: %s", strings.ToUpper(string(k.Provider))),
+		fmt.Sprintf("  profile: %s", profile),
+		fmt.Sprintf("  base URL: %s", baseURL),
+		fmt.Sprintf("  tags: %s", tags),
+		fmt.Sprintf("  active: %s", active),
+		fmt.Sprintf("  updated: %s", displayDate(k).Format("2006-01-02 15:04:05")),
+		MutedStyle.Render("  API key is hidden for security"),
+	}, "\n")
+}
+
 func (m KeyManagerModel) viewForm() string {
 	titleText := " ADD KEY "
 	if m.formMode == "edit" {
 		titleText = " EDIT KEY "
 	}
-	title := TitleStyle.Render(titleText)
-
-	providerDisplay := providerNames[m.formProviderIdx]
-	if m.formFocus == 0 {
-		providerDisplay = SelectedStyle.Render("< " + providerDisplay + " >")
-	} else {
-		providerDisplay = AccentStyle.Render(providerDisplay)
+	modeText := "NORMAL"
+	modeStyle := WarningStyle
+	if m.formInsertMode {
+		modeText = "INSERT"
+		modeStyle = SuccessStyle
 	}
+	title := TitleStyle.Render(titleText) + "  " + modeStyle.Render("["+modeText+"]")
 
-	focusLabel := func(label string, idx int) string {
+	fieldLine := func(idx int, label, value string) string {
+		prefix := "  "
+		labelStyle := SecondaryStyle
+		valueStyle := NormalStyle
 		if m.formFocus == idx {
-			return SelectedStyle.Render(label)
+			prefix = SelectedStyle.Render("> ")
+			labelStyle = SelectedStyle
+			if m.formInsertMode {
+				valueStyle = SuccessStyle
+			} else {
+				valueStyle = AccentStyle
+			}
 		}
-		return SecondaryStyle.Render(label)
+		return fmt.Sprintf("%s%s %s", prefix, labelStyle.Render(label), valueStyle.Render(value))
 	}
 
-	form := fmt.Sprintf(`%s
+	providerDisplay := strings.ToUpper(providerNames[m.formProviderIdx])
+	if m.formFocus == 0 {
+		providerDisplay = "< " + providerDisplay + " >"
+	}
 
-  %s   %s
-
-  %s       %s
-
-  %s  %s
-             %s
-
-  %s   %s
-
-  %s       %s
-
-  %s`,
-		title,
-		focusLabel("Provider:", 0), providerDisplay,
-		focusLabel("Name:", 1), m.formName.View(),
-		focusLabel("Base URL:", 2), m.formBaseURL.View(),
-		MutedStyle.Render("(optional, leave empty for default)"),
-		focusLabel("API Key:", 3), m.formKey.View(),
-		focusLabel("Tags:", 4), m.formTags.View(),
-		MutedStyle.Render("Tab: next field │ Enter: save │ Esc: cancel"),
-	)
-
+	lines := []string{
+		SectionHeaderStyle.Render("FORM"),
+		fieldLine(0, "Provider:", providerDisplay),
+		fieldLine(1, "Name:", m.formName.View()),
+		fieldLine(2, "Base URL:", m.formBaseURL.View()),
+		MutedStyle.Render("    (optional, leave empty for default)"),
+		fieldLine(3, "API Key:", m.formKey.View()),
+		fieldLine(4, "Tags:", m.formTags.View()),
+	}
 	if m.errMsg != "" {
-		form += "\n\n  " + ErrorStyle.Render(m.errMsg)
+		lines = append(lines, "", "  "+ErrorStyle.Render(m.errMsg))
 	}
 
+	content := title + "\n\n" + m.renderProviderTabsWithSelected(m.formProviderIdx) + "\n\n" + strings.Join(lines, "\n")
 	panel := PanelFocusStyle.
 		Width(m.width - 2).
-		Height(m.height - 1).
-		Render(form)
+		Height(m.height - 3).
+		Render(content)
 
-	return panel
+	bar := fmt.Sprintf(" %s │ %s Mode │ %s/%s Field │ %s/%s Provider │ %s Insert │ %s Clear │ %s Save │ %s Back",
+		WarningStyle.Render("Edit"),
+		WarningStyle.Render("NORMAL"),
+		SuccessStyle.Render("j"),
+		SuccessStyle.Render("k"),
+		SuccessStyle.Render("h"),
+		SuccessStyle.Render("l"),
+		SuccessStyle.Render("i"),
+		SuccessStyle.Render("x"),
+		SuccessStyle.Render("Enter"),
+		SuccessStyle.Render("Esc"),
+	)
+	if m.formInsertMode {
+		bar = fmt.Sprintf(" %s │ %s Mode │ %s Input │ %s Clear │ %s Save │ %s Normal",
+			WarningStyle.Render("Edit"),
+			SuccessStyle.Render("INSERT"),
+			SuccessStyle.Render("Type"),
+			SuccessStyle.Render("Ctrl+u"),
+			SuccessStyle.Render("Enter"),
+			SuccessStyle.Render("Esc"),
+		)
+	}
+	if m.errMsg != "" {
+		bar = " " + ErrorStyle.Render(m.errMsg)
+	}
+	statusBar := StatusBarStyle.Width(m.width).Render(bar)
+
+	return lipgloss.JoinVertical(lipgloss.Left, panel, statusBar)
 }
 
 func (m KeyManagerModel) viewConfirm() string {
 	name := "unknown"
+	selectedProvider := m.selectedProvider
 	if m.confirmIdx < len(m.keyRows) {
 		row := m.keyRows[m.confirmIdx]
 		if row.keyID != "" {
 			if k, ok := m.getKeyByID(row.keyID); ok {
 				name = k.Name
+				for i, p := range providers {
+					if p == k.Provider {
+						selectedProvider = i
+						break
+					}
+				}
 			}
 		}
 	}
@@ -704,27 +856,35 @@ func (m KeyManagerModel) viewConfirm() string {
 		deleteStyle = lipgloss.NewStyle().Foreground(Error).Bold(true)
 	}
 
-	dialog := fmt.Sprintf(`
-  %s
+	dialog := fmt.Sprintf(`%s
 
   Are you sure you want to delete %s?
 
   This action cannot be undone.
 
-      %s       %s
-
-  %s`,
+      %s       %s`,
 		ErrorStyle.Bold(true).Render("DELETE KEY"),
 		AccentStyle.Render(fmt.Sprintf("%q", name)),
 		cancelStyle.Render("[ Cancel ]"),
 		deleteStyle.Render("[ Delete ]"),
-		MutedStyle.Render("Tab: switch │ Enter: confirm │ Esc: cancel"),
 	)
-
-	return PanelFocusStyle.
+	title := " KEY MANAGER "
+	content := TitleStyle.Render(title) + "\n\n" + m.renderProviderTabsWithSelected(selectedProvider) + "\n\n" + dialog
+	panel := PanelFocusStyle.
 		Width(m.width - 2).
-		Height(m.height - 1).
-		Render(dialog)
+		Height(m.height - 3).
+		Render(content)
+
+	bar := fmt.Sprintf(" %s │ %s/%s Switch │ %s Confirm │ %s Cancel",
+		WarningStyle.Render("Confirm"),
+		SuccessStyle.Render("h"),
+		SuccessStyle.Render("l"),
+		SuccessStyle.Render("Enter"),
+		SuccessStyle.Render("Esc"),
+	)
+	statusBar := StatusBarStyle.Width(m.width).Render(bar)
+
+	return lipgloss.JoinVertical(lipgloss.Left, panel, statusBar)
 }
 
 // truncate truncates a string to max rune length with ellipsis

@@ -1,6 +1,6 @@
 # AGX 重构路线图（执行结果）
 
-> 截止 2026-02-15，SPEC/TODO 的 8 个任务已按 workflow 分波次执行。
+> 截止 2026-02-27，首轮 8 个重构任务已按 workflow 分波次执行，并作为当前回归基线。
 
 ## 1. 执行波次
 
@@ -23,13 +23,13 @@
 ### 3.1 单测基线
 
 ```bash
-go test ./...
+make test
 ```
 
 ### 3.2 CLI 冒烟基线
 
 ```bash
-bash tests/integration/smoke-go.sh
+make smoke
 ```
 
 脚本内部会执行：
@@ -46,6 +46,6 @@ bash tests/integration/smoke-go.sh
 
 ## 5. 建议门禁（PR/CI）
 
-- 必跑：`go test ./...`
-- 必跑：`bash tests/integration/smoke-go.sh`
+- 必跑：`make test`
+- 必跑：`make smoke`
 - 变更触达 `internal/usecase` 时：校验 `errors.go` 统一错误模型不被旁路

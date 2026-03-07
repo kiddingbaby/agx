@@ -18,8 +18,8 @@ var defaultAgents = []Agent{
 		Provider:       "openai",
 		EnvVar:         "OPENAI_API_KEY",
 		EnvVars:        []string{"OPENAI_API_KEY"},
-		BaseURLEnvVar:  "OPENAI_API_BASE",
-		BaseURLEnvVars: []string{"OPENAI_API_BASE", "OPENAI_BASE_URL"},
+		BaseURLEnvVar:  "OPENAI_BASE_URL",
+		BaseURLEnvVars: []string{"OPENAI_BASE_URL"},
 	},
 	{
 		Name:           "gemini-cli",
