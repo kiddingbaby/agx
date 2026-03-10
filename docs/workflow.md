@@ -50,3 +50,25 @@ workflow 运行文档统一在：
 `design -> spec -> coding -> quality -> review -> test -> uat -> scan -> pr`
 
 说明：`dispatch` 可直接进入任一 phase；团队协作时建议按推荐顺序推进。
+
+## 清理产物（P1）
+
+`.workflow/archive/` 会随 workflow 运行持续增长；建议定期清理。
+
+默认仅 dry-run（不删除）：
+
+```bash
+bash scripts/cleanup-workflow.sh
+```
+
+实际删除（危险操作，显式开启）：
+
+```bash
+bash scripts/cleanup-workflow.sh --apply
+```
+
+可选参数（覆盖默认保留策略：14 天 + 最多 10 个 archive）：
+
+```bash
+bash scripts/cleanup-workflow.sh --keep-days 14 --max-archives 10
+```
