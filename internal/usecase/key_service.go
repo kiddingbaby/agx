@@ -52,6 +52,10 @@ func (s *KeyService) Resolve(provider domainkey.Provider, profile, identifier st
 	return s.repo.Resolve(provider, domainkey.NormalizeProfileName(profile), identifier)
 }
 
+func (s *KeyService) PreviewResolve(provider domainkey.Provider, profile, identifier string) (*domainkey.Key, error) {
+	return s.repo.PreviewResolve(provider, domainkey.NormalizeProfileName(profile), identifier)
+}
+
 func (s *KeyService) SetProfileStrategy(provider domainkey.Provider, profile string, strategy domainkey.RotationStrategy, fixedKey string) error {
 	return s.repo.SetProfileStrategy(provider, domainkey.NormalizeProfileName(profile), strategy, fixedKey)
 }

@@ -4,7 +4,8 @@ import "github.com/kiddingbaby/agx/internal/usecase"
 
 // Container wires application-level use cases.
 type Container struct {
-	KeyService     *usecase.KeyService
-	SessionService *usecase.SessionService
-	LaunchService  *usecase.LaunchService
+	KeyService      *usecase.KeyService
+	ProviderService *usecase.ProviderService
+	SwitchService   *usecase.SwitchService
+	EnvSyncService  *usecase.EnvSyncService
 }

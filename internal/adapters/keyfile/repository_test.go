@@ -143,6 +143,99 @@ func TestRepositoryResolveRoundRobin(t *testing.T) {
 	}
 }
 
+func TestRepositoryPreviewResolveDoesNotAdvanceRoundRobin(t *testing.T) {
+	repo := newTestRepository(t)
+	k1, _ := repo.Add(domainkey.ProviderOpenAI, "prod", "k1", "v1", "", nil)
+	k2, _ := repo.Add(domainkey.ProviderOpenAI, "prod", "k2", "v2", "", nil)
+
+	if err := repo.Activate(k2.ID); err != nil {
+		t.Fatalf("Activate(k2) error = %v", err)
+	}
+	if err := repo.SetProfileStrategy(domainkey.ProviderOpenAI, "prod", domainkey.StrategyRoundRobin, ""); err != nil {
+		t.Fatalf("SetProfileStrategy() error = %v", err)
+	}
+
+	p1, err := repo.PreviewResolve(domainkey.ProviderOpenAI, "prod", "")
+	if err != nil {
+		t.Fatalf("PreviewResolve #1 error = %v", err)
+	}
+	p2, err := repo.PreviewResolve(domainkey.ProviderOpenAI, "prod", "")
+	if err != nil {
+		t.Fatalf("PreviewResolve #2 error = %v", err)
+	}
+	if p1.ID != k1.ID || p2.ID != k1.ID {
+		t.Fatalf("PreviewResolve ids=%v, want both=%s", []string{p1.ID, p2.ID}, k1.ID)
+	}
+
+	active, err := repo.GetActive(domainkey.ProviderOpenAI, "prod")
+	if err != nil {
+		t.Fatalf("GetActive() error = %v", err)
+	}
+	if active.ID != k2.ID {
+		t.Fatalf("active id=%s, want %s", active.ID, k2.ID)
+	}
+
+	got1, err := repo.Resolve(domainkey.ProviderOpenAI, "prod", "")
+	if err != nil {
+		t.Fatalf("Resolve #1 error = %v", err)
+	}
+	got2, err := repo.Resolve(domainkey.ProviderOpenAI, "prod", "")
+	if err != nil {
+		t.Fatalf("Resolve #2 error = %v", err)
+	}
+	if got1.ID != k1.ID || got2.ID != k2.ID {
+		t.Fatalf("Resolve ids=%v, want [%s,%s]", []string{got1.ID, got2.ID}, k1.ID, k2.ID)
+	}
+}
+
+func TestRepositoryResolveClampsNegativeRoundRobinIndexOnLoad(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "keys.yaml")
+	repo, err := NewRepository(path, testSecret)
+	if err != nil {
+		t.Fatalf("NewRepository() error = %v", err)
+	}
+
+	k1, _ := repo.Add(domainkey.ProviderOpenAI, "prod", "k1", "v1", "", nil)
+	_, _ = repo.Add(domainkey.ProviderOpenAI, "prod", "k2", "v2", "", nil)
+	if err := repo.SetProfileStrategy(domainkey.ProviderOpenAI, "prod", domainkey.StrategyRoundRobin, ""); err != nil {
+		t.Fatalf("SetProfileStrategy() error = %v", err)
+	}
+	if _, err := repo.Resolve(domainkey.ProviderOpenAI, "prod", ""); err != nil {
+		t.Fatalf("Resolve() error = %v", err)
+	}
+
+	data, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatalf("ReadFile() error = %v", err)
+	}
+	updated := strings.Replace(string(data), "next-index: 1", "next-index: -1", 1)
+	if updated == string(data) {
+		t.Fatalf("failed to patch next-index in %s (expected next-index: 1)", path)
+	}
+	if err := os.WriteFile(path, []byte(updated), 0600); err != nil {
+		t.Fatalf("WriteFile() error = %v", err)
+	}
+
+	defer func() {
+		if r := recover(); r != nil {
+			t.Fatalf("Resolve() panicked after loading negative next-index: %v", r)
+		}
+	}()
+
+	reloaded, err := NewRepository(path, testSecret)
+	if err != nil {
+		t.Fatalf("NewRepository(reload) error = %v", err)
+	}
+	got, err := reloaded.Resolve(domainkey.ProviderOpenAI, "prod", "")
+	if err != nil {
+		t.Fatalf("Resolve(reloaded) error = %v", err)
+	}
+	if got.ID != k1.ID {
+		t.Fatalf("Resolve(reloaded) id=%s, want %s", got.ID, k1.ID)
+	}
+}
+
 func TestRepositoryResolveFixedByIdentifier(t *testing.T) {
 	repo := newTestRepository(t)
 	k1, _ := repo.Add(domainkey.ProviderGemini, "work", "g1", "v1", "", nil)
@@ -253,9 +346,9 @@ func TestRepositoryLoadLegacyMissingUpdatedAt(t *testing.T) {
   - id: legacy-1
     provider: claude
     name: legacy-key
-    api_key: Zm9v
+    api-key: Zm9v
     active: false
-    created_at: 2026-01-02T03:04:05Z
+    created-at: 2026-01-02T03:04:05Z
 `
 	if err := os.WriteFile(path, []byte(legacy), 0600); err != nil {
 		t.Fatalf("WriteFile() error = %v", err)

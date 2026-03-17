@@ -1,0 +1,191 @@
+version: v1
+contract: prompts/prompt_contract_v1.md
+
+profiles:
+  default: adaptive_split
+
+roles:
+  - role_id: requirements_analyst
+    enabled: true
+    stage: upstream
+    activation_conditions:
+      - when: workflow == implement_feature
+      - when: requirements are vague or conflicting
+    required_inputs: [requirements.md]
+    output_blocks: [STATUS, SUMMARY, ARTIFACTS, RISKS, NEXT_ACTION, REQUIREMENTS_BRIEF]
+    handoff_to: product_designer
+    fallback_role: planner
+    prompt_path: prompts/requirements_analyst.txt
+
+  - role_id: product_designer
+    enabled: true
+    stage: upstream
+    activation_conditions:
+      - when: workflow == implement_feature
+      - when: REQUIREMENTS_BRIEF exists
+    required_inputs: [REQUIREMENTS_BRIEF]
+    output_blocks: [STATUS, SUMMARY, ARTIFACTS, RISKS, NEXT_ACTION, PRD_SLICE]
+    handoff_to: solution_architect
+    fallback_role: planner
+    prompt_path: prompts/product_designer.txt
+
+  - role_id: solution_architect
+    enabled: true
+    stage: upstream
+    activation_conditions:
+      - when: workflow == implement_feature
+      - when: PRD_SLICE exists
+    required_inputs: [PRD_SLICE]
+    output_blocks: [STATUS, SUMMARY, ARTIFACTS, RISKS, NEXT_ACTION, TECH_SPEC]
+    handoff_to: planner
+    fallback_role: planner
+    prompt_path: prompts/solution_architect.txt
+
+  - role_id: planner
+    enabled: true
+    stage: coding
+    activation_conditions:
+      - when: start a new implementation or bugfix workflow
+    required_inputs: [requirements.md]
+    output_blocks: [STATUS, SUMMARY, ARTIFACTS, RISKS, NEXT_ACTION, CONTRACTS]
+    handoff_to: file_selector
+    fallback_role: planner
+    prompt_path: prompts/planner.txt
+
+  - role_id: file_selector
+    enabled: true
+    stage: coding
+    activation_conditions:
+      - when: contract is available
+    required_inputs: [contract]
+    output_blocks: [STATUS, SUMMARY, ARTIFACTS, RISKS, NEXT_ACTION, FILES]
+    handoff_to: executor
+    fallback_role: planner
+    prompt_path: prompts/file_selector.txt
+
+  - role_id: executor
+    enabled: true
+    stage: coding
+    activation_conditions:
+      - when: file list is available
+    required_inputs: [contract, files]
+    output_blocks: [STATUS, SUMMARY, ARTIFACTS, RISKS, NEXT_ACTION, CHANGES]
+    handoff_to: verifier
+    fallback_role: planner
+    prompt_path: prompts/executor.txt
+
+  - role_id: verifier
+    enabled: true
+    stage: quality
+    activation_conditions:
+      - when: code changes are ready
+    required_inputs: [contract]
+    output_blocks: [STATUS, SUMMARY, ARTIFACTS, RISKS, NEXT_ACTION, COMMAND_RESULTS, FINAL_VERDICT]
+    handoff_to: done
+    fallback_role: planner
+    prompt_path: prompts/verifier.txt
+
+  - role_id: map_query
+    enabled: false
+    stage: coding
+    activation_conditions:
+      - when: context_files_count > 6
+      - when: file_selector cannot converge to <= 10 files in first pass
+      - when: changes span >= 2 top-level directories
+    required_inputs: [contract]
+    output_blocks: [STATUS, SUMMARY, ARTIFACTS, RISKS, NEXT_ACTION, MAP_SNIPPET]
+    handoff_to: file_selector
+    fallback_role: file_selector
+    prompt_path: prompts/map_query.txt
+
+  - role_id: router
+    enabled: false
+    stage: coding
+    activation_conditions:
+      - when: multiple recipes are plausible for the same contract
+      - when: selected files cross recipe boundaries
+      - when: primary route confidence is low
+    required_inputs: [contract, files]
+    output_blocks: [STATUS, SUMMARY, ARTIFACTS, RISKS, NEXT_ACTION, WORKFLOW_DECISION]
+    handoff_to: executor
+    fallback_role: planner
+    prompt_path: prompts/router.txt
+
+  - role_id: bug_hunter
+    enabled: false
+    stage: quality
+    activation_conditions:
+      - when: high-risk change or explicit bug audit requested
+    required_inputs: [contract]
+    output_blocks: [STATUS, SUMMARY, ARTIFACTS, RISKS, NEXT_ACTION, FINDINGS]
+    handoff_to: verifier
+    fallback_role: verifier
+    prompt_path: prompts/bug_hunter.txt
+
+  - role_id: skill_extractor
+    enabled: false
+    stage: learning
+    activation_conditions:
+      - when: verifier passes and pattern is reusable
+    required_inputs: [run_logs]
+    output_blocks: [STATUS, SUMMARY, ARTIFACTS, RISKS, NEXT_ACTION, SKILL_CANDIDATE]
+    handoff_to: planner
+    fallback_role: planner
+    prompt_path: prompts/skill_extractor.txt
+
+  - role_id: referee
+    enabled: false
+    stage: quality
+    activation_conditions:
+      - when: findings are disputed and explicit adjudication is requested
+    required_inputs: [findings]
+    output_blocks: [STATUS, SUMMARY, ARTIFACTS, RISKS, NEXT_ACTION, ADJUDICATION]
+    handoff_to: verifier
+    fallback_role: verifier
+    prompt_path: prompts/referee.txt
+
+  - role_id: review_loop_orchestrator
+    enabled: false
+    stage: quality
+    activation_conditions:
+      - when: explicit request asks for iterative review-fix-redteam loop
+    required_inputs: [contract]
+    output_blocks: [STATUS, SUMMARY, ARTIFACTS, RISKS, NEXT_ACTION, ROUND_PLAN, EXIT_CRITERIA, ESCALATION_RULE]
+    handoff_to: executor
+    fallback_role: planner
+    prompt_path: prompts/review_loop_orchestrator.txt
+
+  - role_id: reviewer_strict
+    enabled: false
+    stage: quality
+    activation_conditions:
+      - when: explicit request asks for code-quality deep review
+      - when: verifier passed but risk remains
+    required_inputs: [contract, files]
+    output_blocks: [STATUS, SUMMARY, ARTIFACTS, RISKS, NEXT_ACTION, VERDICT, BLOCKING_FINDINGS, NON_BLOCKING_FINDINGS, MINIMAL_PATCH_PLAN]
+    handoff_to: executor
+    fallback_role: verifier
+    prompt_path: prompts/reviewer_strict.txt
+
+  - role_id: architecture_reviewer
+    enabled: false
+    stage: quality
+    activation_conditions:
+      - when: explicit request asks for architecture rationality review
+      - when: repo structure or module boundaries are under discussion
+    required_inputs: [contract, files]
+    output_blocks: [STATUS, SUMMARY, ARTIFACTS, RISKS, NEXT_ACTION, VERDICT, ARCHITECTURE_STRENGTHS, ARCHITECTURE_FINDINGS, SIMPLIFICATION_OPPORTUNITIES, MINIMAL_ARCH_PLAN]
+    handoff_to: executor
+    fallback_role: planner
+    prompt_path: prompts/architecture_reviewer.txt
+
+  - role_id: redteam_reviewer
+    enabled: false
+    stage: quality
+    activation_conditions:
+      - when: strict review fixed and adversarial recheck requested
+    required_inputs: [contract, findings]
+    output_blocks: [STATUS, SUMMARY, ARTIFACTS, RISKS, NEXT_ACTION, VERDICT, BLOCKING_FINDINGS, REDTEAM_SCENARIO, BASELINE_READY]
+    handoff_to: verifier
+    fallback_role: verifier
+    prompt_path: prompts/redteam_reviewer.txt

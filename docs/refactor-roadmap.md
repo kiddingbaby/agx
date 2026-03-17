@@ -1,13 +1,14 @@
 # AGX 重构路线图（执行结果）
 
-> 截止 2026-02-15，SPEC/TODO 的 8 个任务已按 workflow 分波次执行。
+> 截止 2026-02-15，SPEC/TODO 的 8 个任务已按 workflow 分波次执行。  
+> 2026-03-12：已移除 TUI，当前为 CLI-only。
 
 ## 1. 执行波次
 
 - Wave 1: Task 1（domain/key + ports 边界）
-- Wave 2: Task 2-3（keyfile adapter + tmux adapter + session naming）
+- Wave 2: Task 2-3（keyfile adapter + provider/config adapter）
 - Wave 3: Task 4-5（usecase errors + app/bootstrap/config）
-- Wave 4: Task 6-7（interfaces/cli + interfaces/tui）
+- Wave 4: Task 6-7（interfaces/cli）
 - Wave 5: Task 8（文档收敛 + 回归基线）
 
 ## 2. 已完成里程碑
@@ -36,13 +37,12 @@ bash tests/integration/smoke-go.sh
 
 - 构建 `cmd/agx`
 - 临时 HOME 下 key add/activate/ls
-- `agx ls`
-- 无 active openai key 时 `agx codex-cli` 错误路径校验
+- `agx status`
+- `agx use <name>` 同步到各 CLI 原生配置文件的路径校验
 
 ## 4. 风险与后续优化项
 
-1. `SessionConfig.Agent` 仍承载 session 名称语义（后续可显式拆 `SessionName` 字段）
-2. interfaces/tui 目前通过 type alias 复用 `internal/tui`，后续可继续纯化目录
+1. `toolconfig` 写入各 CLI 原生配置，需持续关注上游配置格式变更
 
 ## 5. 建议门禁（PR/CI）
 

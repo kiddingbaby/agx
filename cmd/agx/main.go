@@ -8,11 +8,6 @@ import (
 	"github.com/kiddingbaby/agx/internal/interfaces/cli"
 )
 
-var (
-	joinArgs  = cli.JoinArgs
-	escapeArg = cli.EscapeArg
-)
-
 func main() {
 	container, err := app.Bootstrap()
 	if err != nil {
@@ -22,12 +17,9 @@ func main() {
 
 	root := cli.New(
 		container.KeyService,
-		container.SessionService,
-		container.LaunchService,
-		cli.Handlers{
-			RunDashboard:  runTUI,
-			RunKeyManager: runKeyManagerTUI,
-		},
+		container.ProviderService,
+		container.SwitchService,
+		container.EnvSyncService,
 	)
 
 	os.Exit(root.Execute(os.Args[1:]))

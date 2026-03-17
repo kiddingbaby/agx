@@ -1,0 +1,9 @@
+name: implement_feature
+steps:
+  - requirements_analyst
+  - product_designer
+  - solution_architect
+  - planner
+  - file_selector
+  - executor
+  - verifier

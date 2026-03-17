@@ -3,8 +3,11 @@ package app
 import (
 	"fmt"
 
+	"github.com/kiddingbaby/agx/internal/adapters/configfile"
+	"github.com/kiddingbaby/agx/internal/adapters/executil"
 	"github.com/kiddingbaby/agx/internal/adapters/keyfile"
-	tmuxruntime "github.com/kiddingbaby/agx/internal/adapters/tmux"
+	"github.com/kiddingbaby/agx/internal/adapters/toolconfig"
+	"github.com/kiddingbaby/agx/internal/adapters/undofile"
 	"github.com/kiddingbaby/agx/internal/config"
 	"github.com/kiddingbaby/agx/internal/usecase"
 )
@@ -26,19 +29,22 @@ func Bootstrap() (*Container, error) {
 	if err != nil {
 		return nil, fmt.Errorf("initialize key store: %w", err)
 	}
-
-	runtime, err := tmuxruntime.NewRuntime()
+	providerRegistry, err := configfile.NewProviderRegistry(paths.ProviderConfigPath)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("initialize provider config: %w", err)
 	}
 
 	keySvc := usecase.NewKeyService(store)
-	sessionSvc := usecase.NewSessionService(runtime)
-	launchSvc := usecase.NewLaunchService(keySvc, runtime)
+	providerSvc := usecase.NewProviderService(providerRegistry)
+	configSyncer := toolconfig.NewSyncer(paths)
+	undoStore := undofile.NewStore(paths)
+	switchSvc := usecase.NewSwitchService(keySvc, providerSvc, configSyncer, undoStore)
+	envSyncSvc := usecase.NewEnvSyncService(paths, executil.NewRunner())
 
 	return &Container{
-		KeyService:     keySvc,
-		SessionService: sessionSvc,
-		LaunchService:  launchSvc,
+		KeyService:      keySvc,
+		ProviderService: providerSvc,
+		SwitchService:   switchSvc,
+		EnvSyncService:  envSyncSvc,
 	}, nil
 }

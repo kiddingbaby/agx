@@ -6,15 +6,12 @@
 agx/
 ├── cmd/
 │   └── agx/
-│       ├── main.go
-│       └── tui.go
+│       └── main.go
 ├── internal/
 │   ├── adapters/
-│   │   ├── keyfile/
-│   │   │   ├── crypto.go
-│   │   │   └── repository.go
-│   │   └── tmux/
-│   │       └── runtime.go
+│   │   ├── configfile/     # providers.yaml
+│   │   ├── keyfile/        # keys.yaml + AES-GCM
+│   │   └── toolconfig/     # sync into native CLI configs
 │   ├── app/
 │   │   ├── bootstrap.go
 │   │   └── container.go
@@ -24,29 +21,20 @@ agx/
 │   ├── domain/
 │   │   ├── agent/
 │   │   ├── key/
-│   │   └── session/
+│   │   ├── provider/
 │   ├── interfaces/
-│   │   ├── cli/
-│   │   └── tui/
+│   │   └── cli/
 │   ├── ports/
 │   ├── usecase/
-│   └── tui/          # Bubble Tea model 实现
 ├── docs/
+│   ├── README.md
+│   ├── architecture.md
+│   ├── directory-structure.md
+│   ├── refactor-roadmap.md
 │   └── workflow.md
-├── .workflow/
-│   ├── docs/
-│   │   ├── DESIGN.md
-│   │   ├── SPEC.md
-│   │   ├── TODO.md
-│   │   └── UAT.md
-│   └── config/
-│       └── workflow.yml
 ├── tests/
 │   ├── integration/
 │   └── e2e/
-├── DESIGN.md
-├── SPEC.md
-└── TODO.md
 ```
 
 ## 2. 依赖规则（落地约束）
@@ -60,11 +48,10 @@ agx/
 ## 3. 关键迁移结果
 
 | 旧位置 | 新位置 | 状态 |
-|---|---|---|
+| --- | --- | --- |
 | `internal/key/store.go`（实现） | `internal/adapters/keyfile/*` | 已迁移，不保留兼容层 |
-| `internal/session/orchestrator.go`（实现） | `internal/adapters/tmux/runtime.go` | 已迁移，不保留兼容层 |
 | `cmd/agx/main.go`（命令解析） | `internal/interfaces/cli/*` | 已迁移 |
-| `cmd/agx/tui.go`（生命周期） | `internal/interfaces/tui/app.go` | 已迁移 |
+| 各 CLI 原生配置写入 | `internal/adapters/toolconfig/*` | 已迁移 |
 | 分散错误定义 | `internal/usecase/errors.go` | 已统一 |
 
 ## 4. 兼容策略

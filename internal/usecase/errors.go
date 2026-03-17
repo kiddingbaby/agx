@@ -5,21 +5,16 @@ import (
 	"fmt"
 )
 
-// UnknownAgentError indicates the given agent name is not registered.
-type UnknownAgentError struct {
-	Name string
-}
-
-func (e *UnknownAgentError) Error() string {
-	return fmt.Sprintf("unknown agent: %s", e.Name)
-}
-
 // NoActiveKeyError indicates the provider has no active key.
 type NoActiveKeyError struct {
 	Provider string
+	Profile  string
 }
 
 func (e *NoActiveKeyError) Error() string {
+	if e.Profile != "" {
+		return fmt.Sprintf("no active key for %s (profile=%s)", e.Provider, e.Profile)
+	}
 	return fmt.Sprintf("no active key for %s", e.Provider)
 }
 
@@ -35,35 +30,47 @@ func (e *KeyNotFoundError) Error() string {
 	return fmt.Sprintf("key not found: %s", e.Identifier)
 }
 
+// KeySelectorNoMatchError indicates no key matches the requested tag selector in a given scope.
+type KeySelectorNoMatchError struct {
+	Provider string
+	Profile  string
+	Tags     []string
+}
+
+func (e *KeySelectorNoMatchError) Error() string {
+	scope := e.Provider
+	if e.Profile != "" {
+		scope = fmt.Sprintf("%s (profile=%s)", e.Provider, e.Profile)
+	}
+	return fmt.Sprintf("no key matches selector for %s: tags=%v", scope, e.Tags)
+}
+
+// KeySelectorAmbiguousError indicates multiple keys match a selector without a single active choice.
+type KeySelectorAmbiguousError struct {
+	Provider string
+	Profile  string
+	Tags     []string
+	Matches  []string
+}
+
+func (e *KeySelectorAmbiguousError) Error() string {
+	scope := e.Provider
+	if e.Profile != "" {
+		scope = fmt.Sprintf("%s (profile=%s)", e.Provider, e.Profile)
+	}
+	if len(e.Matches) == 0 {
+		return fmt.Sprintf("multiple keys match selector for %s: tags=%v", scope, e.Tags)
+	}
+	return fmt.Sprintf("multiple keys match selector for %s: tags=%v matches=%v", scope, e.Tags, e.Matches)
+}
+
 func (e *KeyNotFoundError) Is(target error) bool {
 	_, ok := target.(*KeyNotFoundError)
 	return ok
 }
 
-// RuntimeError wraps failures from SessionRuntime operations.
-type RuntimeError struct {
-	Operation string
-	Err       error
-}
-
-func (e *RuntimeError) Error() string {
-	if e.Operation == "" {
-		return fmt.Sprintf("runtime error: %v", e.Err)
-	}
-	return fmt.Sprintf("runtime %s failed: %v", e.Operation, e.Err)
-}
-
-func (e *RuntimeError) Unwrap() error {
-	return e.Err
-}
-
 // ErrKeyNotFound is kept for compatibility with existing callers using errors.Is.
 var ErrKeyNotFound error = &KeyNotFoundError{}
-
-func IsUnknownAgentError(err error) bool {
-	var target *UnknownAgentError
-	return errors.As(err, &target)
-}
 
 func IsNoActiveKeyError(err error) bool {
 	var target *NoActiveKeyError
@@ -75,23 +82,12 @@ func IsKeyNotFoundError(err error) bool {
 	return errors.As(err, &target)
 }
 
-func IsRuntimeError(err error) bool {
-	var target *RuntimeError
+func IsKeySelectorNoMatchError(err error) bool {
+	var target *KeySelectorNoMatchError
 	return errors.As(err, &target)
 }
 
-func WrapRuntimeError(operation string, err error) error {
-	if err == nil {
-		return nil
-	}
-
-	var runtimeErr *RuntimeError
-	if errors.As(err, &runtimeErr) {
-		return err
-	}
-
-	return &RuntimeError{
-		Operation: operation,
-		Err:       err,
-	}
+func IsKeySelectorAmbiguousError(err error) bool {
+	var target *KeySelectorAmbiguousError
+	return errors.As(err, &target)
 }

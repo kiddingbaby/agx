@@ -12,6 +12,7 @@ type KeyRepository interface {
 	GetActive(provider domainkey.Provider, profile string) (*domainkey.Key, error)
 	HasActive(provider domainkey.Provider, profile string) bool
 	Resolve(provider domainkey.Provider, profile, identifier string) (*domainkey.Key, error)
+	PreviewResolve(provider domainkey.Provider, profile, identifier string) (*domainkey.Key, error)
 	ListProfiles(provider domainkey.Provider) []domainkey.Profile
 	SetProfileStrategy(provider domainkey.Provider, profile string, strategy domainkey.RotationStrategy, fixedKey string) error
 }

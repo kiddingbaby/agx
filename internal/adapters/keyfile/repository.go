@@ -7,6 +7,7 @@ import (
 	"math/big"
 	"os"
 	"path/filepath"
+	"strings"
 	"sync"
 	"syscall"
 	"time"
@@ -71,6 +72,18 @@ func (r *Repository) Add(provider domainkey.Provider, profile, name, apiKey, bas
 		return nil, errors.New("invalid provider")
 	}
 	profile = domainkey.NormalizeProfileName(profile)
+	name = strings.TrimSpace(name)
+	apiKey = strings.TrimSpace(apiKey)
+	baseURL = strings.TrimSpace(baseURL)
+	if err := domainkey.ValidateKeyName(name); err != nil {
+		return nil, err
+	}
+	if err := domainkey.ValidateAPIKey(apiKey); err != nil {
+		return nil, err
+	}
+	if err := domainkey.ValidateBaseURL(baseURL); err != nil {
+		return nil, err
+	}
 
 	var out domainkey.Key
 	err := r.withWriteLock(func() error {
@@ -120,6 +133,20 @@ func (r *Repository) Update(id string, provider domainkey.Provider, profile, nam
 		return nil, errors.New("invalid provider")
 	}
 	profile = domainkey.NormalizeProfileName(profile)
+	name = strings.TrimSpace(name)
+	baseURL = strings.TrimSpace(baseURL)
+	if err := domainkey.ValidateKeyName(name); err != nil {
+		return nil, err
+	}
+	if apiKey != "" {
+		apiKey = strings.TrimSpace(apiKey)
+		if err := domainkey.ValidateAPIKey(apiKey); err != nil {
+			return nil, err
+		}
+	}
+	if err := domainkey.ValidateBaseURL(baseURL); err != nil {
+		return nil, err
+	}
 
 	var updated domainkey.Key
 	err := r.withWriteLock(func() error {
@@ -241,6 +268,12 @@ func (r *Repository) GetActive(provider domainkey.Provider, profile string) (*do
 				if err != nil {
 					return err
 				}
+				if err := domainkey.ValidateAPIKey(decrypted); err != nil {
+					return fmt.Errorf("stored api key is invalid: %w", err)
+				}
+				if err := domainkey.ValidateBaseURL(k.BaseURL); err != nil {
+					return fmt.Errorf("stored base-url is invalid: %w", err)
+				}
 				copyKey := k
 				copyKey.APIKey = decrypted
 				out = &copyKey
@@ -302,11 +335,83 @@ func (r *Repository) Resolve(provider domainkey.Provider, profile, identifier st
 		}
 
 		r.deactivateOthers(provider, profile, r.keys[selectedIdx].ID)
-		r.keys[selectedIdx].Active = true
 		decrypted, err := decryptAESGCM(r.secret, r.keys[selectedIdx].APIKey)
 		if err != nil {
 			return err
 		}
+		if err := domainkey.ValidateAPIKey(decrypted); err != nil {
+			return fmt.Errorf("stored api key is invalid: %w", err)
+		}
+		if err := domainkey.ValidateBaseURL(r.keys[selectedIdx].BaseURL); err != nil {
+			return fmt.Errorf("stored base-url is invalid: %w", err)
+		}
+
+		r.deactivateOthers(provider, profile, r.keys[selectedIdx].ID)
+		r.keys[selectedIdx].Active = true
+		copyKey := r.keys[selectedIdx]
+		copyKey.APIKey = decrypted
+		out = &copyKey
+		return nil
+	})
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (r *Repository) PreviewResolve(provider domainkey.Provider, profile, identifier string) (*domainkey.Key, error) {
+	profile = domainkey.NormalizeProfileName(profile)
+
+	var out *domainkey.Key
+	err := r.withReadLock(func() error {
+		indexes := r.findKeyIndexes(provider, profile)
+		if len(indexes) == 0 {
+			return errors.New("no key for provider/profile")
+		}
+
+		selectedIdx := -1
+		if identifier != "" {
+			selectedIdx = r.findKeyIndexByIdentifier(indexes, identifier)
+			if selectedIdx < 0 {
+				return errors.New("key not found")
+			}
+		} else {
+			p := r.ensureProfile(provider, profile)
+			if p.Strategy == "" {
+				p.Strategy = domainkey.StrategyFixed
+			}
+
+			switch p.Strategy {
+			case domainkey.StrategyRoundRobin:
+				selectedIdx = indexes[p.NextIndex%len(indexes)]
+			case domainkey.StrategyRandom:
+				randomIdx, err := randIndex(len(indexes))
+				if err != nil {
+					return err
+				}
+				selectedIdx = indexes[randomIdx]
+			default:
+				selectedIdx = r.pickFixedIndex(indexes, p.FixedKey)
+				if selectedIdx < 0 {
+					selectedIdx = r.pickActiveIndex(indexes)
+				}
+				if selectedIdx < 0 {
+					selectedIdx = indexes[0]
+				}
+			}
+		}
+
+		decrypted, err := decryptAESGCM(r.secret, r.keys[selectedIdx].APIKey)
+		if err != nil {
+			return err
+		}
+		if err := domainkey.ValidateAPIKey(decrypted); err != nil {
+			return fmt.Errorf("stored api key is invalid: %w", err)
+		}
+		if err := domainkey.ValidateBaseURL(r.keys[selectedIdx].BaseURL); err != nil {
+			return fmt.Errorf("stored base-url is invalid: %w", err)
+		}
+
 		copyKey := r.keys[selectedIdx]
 		copyKey.APIKey = decrypted
 		out = &copyKey
@@ -564,7 +669,30 @@ func (r *Repository) loadIfExists() error {
 
 	now := time.Now()
 	for i := range r.keys {
+		provider, ok := domainkey.ParseProvider(string(r.keys[i].Provider))
+		if !ok {
+			return fmt.Errorf("invalid provider in keys.yaml: %q", r.keys[i].Provider)
+		}
+		r.keys[i].Provider = provider
 		r.keys[i].Profile = domainkey.NormalizeProfileName(r.keys[i].Profile)
+		r.keys[i].Name = strings.TrimSpace(r.keys[i].Name)
+		if err := domainkey.ValidateKeyName(r.keys[i].Name); err != nil {
+			return fmt.Errorf("invalid key name in keys.yaml: %w", err)
+		}
+		r.keys[i].BaseURL = strings.TrimSpace(r.keys[i].BaseURL)
+		if err := domainkey.ValidateBaseURL(r.keys[i].BaseURL); err != nil {
+			return fmt.Errorf("invalid key base-url in keys.yaml: %w", err)
+		}
+		r.keys[i].APIKey = strings.TrimSpace(r.keys[i].APIKey)
+		if r.keys[i].APIKey == "" {
+			return fmt.Errorf("invalid key entry in keys.yaml: api-key is empty")
+		}
+		if strings.ContainsAny(r.keys[i].APIKey, "\x00\n\r") {
+			return fmt.Errorf("invalid key entry in keys.yaml: api-key contains invalid characters")
+		}
+		if strings.TrimSpace(r.keys[i].ID) == "" {
+			r.keys[i].ID = uuid.New().String()
+		}
 		if !r.keys[i].UpdatedAt.IsZero() {
 			continue
 		}
@@ -576,9 +704,17 @@ func (r *Repository) loadIfExists() error {
 	}
 
 	for i := range r.profiles {
+		provider, ok := domainkey.ParseProvider(string(r.profiles[i].Provider))
+		if !ok {
+			return fmt.Errorf("invalid provider in keys.yaml profiles: %q", r.profiles[i].Provider)
+		}
+		r.profiles[i].Provider = provider
 		r.profiles[i].Name = domainkey.NormalizeProfileName(r.profiles[i].Name)
 		if !r.profiles[i].Strategy.Valid() {
 			r.profiles[i].Strategy = domainkey.StrategyFixed
+		}
+		if r.profiles[i].NextIndex < 0 {
+			r.profiles[i].NextIndex = 0
 		}
 		if r.profiles[i].UpdatedAt.IsZero() {
 			r.profiles[i].UpdatedAt = now

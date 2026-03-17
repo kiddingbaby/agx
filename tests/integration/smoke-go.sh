@@ -6,3 +6,4 @@ cd "$ROOT"
 
 go test ./...
 bash tests/e2e/cli-smoke.sh
+bash tests/e2e/full-flow.sh

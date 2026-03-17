@@ -18,17 +18,17 @@ var defaultAgents = []Agent{
 		Provider:       "openai",
 		EnvVar:         "OPENAI_API_KEY",
 		EnvVars:        []string{"OPENAI_API_KEY"},
-		BaseURLEnvVar:  "OPENAI_API_BASE",
-		BaseURLEnvVars: []string{"OPENAI_API_BASE", "OPENAI_BASE_URL"},
+		BaseURLEnvVar:  "OPENAI_BASE_URL",
+		BaseURLEnvVars: []string{"OPENAI_BASE_URL", "OPENAI_API_BASE"},
 	},
 	{
 		Name:           "gemini-cli",
 		Command:        "gemini",
 		Provider:       "gemini",
-		EnvVar:         "GOOGLE_API_KEY",
-		EnvVars:        []string{"GOOGLE_API_KEY", "GEMINI_API_KEY"},
-		BaseURLEnvVar:  "GEMINI_BASE_URL",
-		BaseURLEnvVars: []string{"GEMINI_BASE_URL"},
+		EnvVar:         "GEMINI_API_KEY",
+		EnvVars:        []string{"GEMINI_API_KEY", "GOOGLE_GEMINI_API_KEY", "GOOGLE_API_KEY"},
+		BaseURLEnvVar:  "GOOGLE_GEMINI_BASE_URL",
+		BaseURLEnvVars: []string{"GOOGLE_GEMINI_BASE_URL", "GEMINI_BASE_URL"},
 	},
 }
 

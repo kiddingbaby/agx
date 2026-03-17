@@ -124,6 +124,10 @@ func (f *fakeKeyRepo) Resolve(provider domainkey.Provider, profile, identifier s
 	return nil, errors.New("no key")
 }
 
+func (f *fakeKeyRepo) PreviewResolve(provider domainkey.Provider, profile, identifier string) (*domainkey.Key, error) {
+	return f.Resolve(provider, profile, identifier)
+}
+
 func (f *fakeKeyRepo) ListProfiles(provider domainkey.Provider) []domainkey.Profile {
 	out := make([]domainkey.Profile, 0)
 	for _, p := range f.profiles {
