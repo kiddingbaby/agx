@@ -11,7 +11,7 @@
 ## 根目录约束
 
 本项目不接受任何 wf 生成产物落在仓库根目录。  
-wf 相关产物必须全部位于 `.workflow/`（例如 docs/state/archive/reports/tasks）。
+若需要临时 workflow 留档，也必须收敛在 `.workflow/` 下；仓库基线只保留 `config/` 与 `docs/`。
 
 以下路径在本项目视为不允许出现：
 
@@ -51,9 +51,9 @@ workflow 运行文档统一在：
 
 说明：`dispatch` 可直接进入任一 phase；团队协作时建议按推荐顺序推进。
 
-## 清理产物（P1）
+## 清理产物
 
-`.workflow/archive/` 会随 workflow 运行持续增长；建议定期清理。
+`.workflow/archive/`、`.workflow/reports/`、`.workflow/state.json` 属于运行留档，不应作为长期仓库资产保留。
 
 默认仅 dry-run（不删除）：
 

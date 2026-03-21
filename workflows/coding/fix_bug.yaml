@@ -1,6 +1,0 @@
-name: fix_bug
-steps:
-  - planner
-  - file_selector
-  - executor
-  - verifier

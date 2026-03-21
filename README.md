@@ -186,4 +186,4 @@ bash tests/integration/smoke-go.sh
 
 - 使用说明：`docs/workflow.md`
 - 配置源：`.workflow/config/workflow.yml`
-- 运行文档源：`.workflow/docs/DESIGN.md` / `.workflow/docs/SPEC.md` / `.workflow/docs/TODO.md`
+- 当前只保留 `.workflow/docs/` 下的活跃文档；archive/report/state 等运行留档不纳入仓库基线
