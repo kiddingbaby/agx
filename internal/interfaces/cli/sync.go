@@ -17,7 +17,7 @@ type syncBundle struct {
 }
 
 type syncAssets struct {
-	SkillsHubHome     string   `yaml:"skills-hub-home,omitempty"`
+	AssetsRoot        string   `yaml:"assets-root,omitempty"`
 	SystemPromptPath  string   `yaml:"system-prompt-path,omitempty"`
 	SystemPromptLinks []string `yaml:"system-prompt-links,omitempty"`
 
@@ -209,7 +209,7 @@ func (r *Root) handleSync(args []string) int {
 
 func toEnvAssetsConfig(in syncAssets) usecase.EnvAssetsConfig {
 	cfg := usecase.EnvAssetsConfig{
-		SkillsHubHome:     strings.TrimSpace(in.SkillsHubHome),
+		AssetsRoot:        strings.TrimSpace(in.AssetsRoot),
 		SystemPromptPath:  strings.TrimSpace(in.SystemPromptPath),
 		SystemPromptLinks: in.SystemPromptLinks,
 	}

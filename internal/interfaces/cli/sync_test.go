@@ -27,8 +27,8 @@ func TestSync_SystemPromptAndSkills(t *testing.T) {
 	root.stdout = stdout
 	root.stderr = stderr
 
-	skillsHub := filepath.Join(home, "skills-hub")
-	systemPrompt := filepath.Join(skillsHub, "system-prompt", "AGENTS.md")
+	assetsRoot := filepath.Join(home, "agent-assets")
+	systemPrompt := filepath.Join(assetsRoot, "system-prompt", "AGENTS.md")
 	if err := os.MkdirAll(filepath.Dir(systemPrompt), 0755); err != nil {
 		t.Fatalf("MkdirAll(system-prompt) error = %v", err)
 	}
@@ -36,7 +36,7 @@ func TestSync_SystemPromptAndSkills(t *testing.T) {
 		t.Fatalf("WriteFile(system prompt) error = %v", err)
 	}
 
-	skillFile := filepath.Join(skillsHub, "skills", "tools", "demo", "SKILL.md")
+	skillFile := filepath.Join(assetsRoot, "skills", "tools", "demo", "SKILL.md")
 	if err := os.MkdirAll(filepath.Dir(skillFile), 0755); err != nil {
 		t.Fatalf("MkdirAll(skill) error = %v", err)
 	}
@@ -46,7 +46,7 @@ func TestSync_SystemPromptAndSkills(t *testing.T) {
 
 	bundle := `
 assets:
-  skills-hub-home: "` + skillsHub + `"
+  assets-root: "` + assetsRoot + `"
   system-prompt-path: system-prompt/AGENTS.md
   skills:
     source: skills/tools

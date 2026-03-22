@@ -220,8 +220,16 @@ agx apply ~/.config/agx/agx.yml
 `agx sync` 读取 `agx.yml` 里的 `assets:` 段（与 `agx apply` 无关），并执行三类动作：
 
 - system prompt：创建/修复 `~/.codex/AGENTS.md`、`~/.claude/CLAUDE.md`、`~/.gemini/GEMINI.md` 的 symlink
-- skills：镜像 `skills/tools` 到 `~/.codex/skills/tools` 与 `~/.claude/skills/tools`
+- skills：镜像 `skills.source` 指定的目录到 `~/.codex/skills/tools` 与 `~/.claude/skills/tools`
 - MCP（可选）：按配置 add/remove/replace MCP servers（codex/claude）
+
+路径语义只有三层：
+
+- `assets-root`：相对路径解析锚点
+- `system-prompt-path`：system prompt 文件或目录源
+- `skills.source`：要镜像到各 CLI home 的 skills 目录源
+
+它们可以共用一个根，也可以分别写成绝对路径；`agx sync` 不要求 system prompt 和 skills 属于同一个物理子树。
 
 示例（推荐把配置放到默认位置：`~/.config/agx/agx.yml`，之后在任意目录只需执行 `agx sync`）：
 

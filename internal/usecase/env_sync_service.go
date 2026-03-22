@@ -23,7 +23,7 @@ type EnvSyncOptions struct {
 }
 
 type EnvAssetsConfig struct {
-	SkillsHubHome     string
+	AssetsRoot        string
 	SystemPromptPath  string
 	SystemPromptLinks []string // codex|claude|gemini
 
@@ -33,7 +33,7 @@ type EnvAssetsConfig struct {
 
 type SkillsAssetsConfig struct {
 	Enabled bool
-	Source  string   // absolute path or relative to SkillsHubHome
+	Source  string   // absolute path or relative to AssetsRoot
 	Targets []string // codex|claude
 	Prune   bool
 }
@@ -150,7 +150,7 @@ func (s *EnvSyncService) Sync(opts EnvSyncOptions, cfg EnvAssetsConfig) EnvSyncR
 }
 
 func normalizeEnvAssetsConfig(cfg EnvAssetsConfig) EnvAssetsConfig {
-	cfg.SkillsHubHome = strings.TrimSpace(cfg.SkillsHubHome)
+	cfg.AssetsRoot = strings.TrimSpace(cfg.AssetsRoot)
 	cfg.SystemPromptPath = strings.TrimSpace(cfg.SystemPromptPath)
 	if cfg.SystemPromptLinks == nil {
 		cfg.SystemPromptLinks = []string{"codex", "claude", "gemini"}
@@ -186,15 +186,15 @@ func normalizeEnvAssetsConfig(cfg EnvAssetsConfig) EnvAssetsConfig {
 func (s *EnvSyncService) syncSystemPrompts(opts EnvSyncOptions, cfg EnvAssetsConfig, res *EnvSyncResult) {
 	sourceRoot := cfg.SystemPromptPath
 	if !filepath.IsAbs(sourceRoot) {
-		if cfg.SkillsHubHome == "" {
+		if cfg.AssetsRoot == "" {
 			res.Failures = append(res.Failures, EnvSyncFailure{
 				Component: "system_prompt",
-				Message:   "system-prompt-path is relative but skills-hub-home is empty",
+				Message:   "system-prompt-path is relative but assets-root is empty",
 				Detail:    fmt.Sprintf("system-prompt-path=%q", cfg.SystemPromptPath),
 			})
 			return
 		}
-		sourceRoot = filepath.Join(cfg.SkillsHubHome, cfg.SystemPromptPath)
+		sourceRoot = filepath.Join(cfg.AssetsRoot, cfg.SystemPromptPath)
 	}
 	sourceInfo, err := os.Stat(sourceRoot)
 	if err != nil {
@@ -306,15 +306,15 @@ func systemPromptSourceFilenameForTarget(target string) (string, bool) {
 func (s *EnvSyncService) syncSkills(opts EnvSyncOptions, cfg EnvAssetsConfig, res *EnvSyncResult) {
 	src := cfg.Skills.Source
 	if !filepath.IsAbs(src) {
-		if cfg.SkillsHubHome == "" {
+		if cfg.AssetsRoot == "" {
 			res.Failures = append(res.Failures, EnvSyncFailure{
 				Component: "skills",
-				Message:   "skills.source is relative but skills-hub-home is empty",
+				Message:   "skills.source is relative but assets-root is empty",
 				Detail:    fmt.Sprintf("skills.source=%q", cfg.Skills.Source),
 			})
 			return
 		}
-		src = filepath.Join(cfg.SkillsHubHome, cfg.Skills.Source)
+		src = filepath.Join(cfg.AssetsRoot, cfg.Skills.Source)
 	}
 	if fi, err := os.Stat(src); err != nil || !fi.IsDir() {
 		res.Failures = append(res.Failures, EnvSyncFailure{

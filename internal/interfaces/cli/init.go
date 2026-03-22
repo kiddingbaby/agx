@@ -57,7 +57,7 @@ profiles: []
 # Example: global assets sync (system prompts / skills / MCP)
 #
 # assets:
-#   skills-hub-home: "/path/to/skills-hub"
+#   assets-root: "/path/to/agent-assets"
 #   # file mode: "system-prompt/AGENTS.md"
 #   # dir mode (recommended): "system-prompt" (contains AGENTS.md/CLAUDE.md/GEMINI.md)
 #   system-prompt-path: "system-prompt"

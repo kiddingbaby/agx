@@ -136,7 +136,7 @@ profiles: []
 
 ```yaml
 assets:
-  skills-hub-home: "/path/to/skills-hub"  # SSOT 资产仓本地路径（建议）
+  assets-root: "/path/to/agent-assets"  # 全局资产根目录（建议）
 
   # system prompt：既支持单文件，也支持目录模式（推荐：目录模式）
   #
@@ -145,12 +145,12 @@ assets:
   #     - AGENTS.md  (codex)
   #     - CLAUDE.md  (claude)
   #     - GEMINI.md  (gemini)
-  system-prompt-path: "system-prompt"     # 相对 skills-hub-home 或绝对路径
+  system-prompt-path: "system-prompt"     # 相对 assets-root 或绝对路径
   system-prompt-links: [codex, claude, gemini] # 为空数组表示禁用
 
   skills:
     enabled: true
-    source: "skills/tools"                      # 相对 skills-hub-home 或绝对路径
+    source: "skills/tools"                      # 相对 assets-root 或绝对路径
     targets: [codex, claude]
     prune: true                                 # true: 目标目录与 source 保持一致（推荐）
 
@@ -171,6 +171,8 @@ assets:
 
 说明：
 
-- `skills-hub-home` 支持本地路径；git URL/自动拉取暂不内置（可先用外部脚本把仓库同步到本地路径）。
+- `assets-root` 是相对路径解析锚点，不代表 system prompt 或 skills 的 owner；git URL/自动拉取暂不内置（可先用外部脚本把资产仓同步到本地路径）。
+- `system-prompt-path` 与 `skills.source` 可以共享同一个 `assets-root`，也可以分别使用绝对路径。
+- `skills.source` 指“要镜像到目标 CLI home 的技能目录”，不要求它本身就是某个仓根目录。
 - `system-prompt-links: []` 可显式禁用 system prompt 同步（避免占位配置触发失败）。
 - `mcp.servers[].command` 为数组：第一个元素为可执行文件，其余为 args（避免 shell split 漂移）。

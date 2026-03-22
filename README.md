@@ -65,6 +65,14 @@ agx init
 
 说明：模板默认不包含任何 key（避免误读环境变量/明文落盘）；你可以用 `agx create key` 管理 key，或在 agx.yml 里启用 `keys:` 导入。
 
+`assets:` 段里的路径语义建议这样理解：
+
+- `assets-root`：相对路径解析锚点，不代表资产 owner
+- `system-prompt-path`：system prompt 文件或目录源
+- `skills.source`：待镜像的 skills 目录源
+
+它们可以共用一个根，也可以分别写绝对路径。当前 `agent-stack` 示例里，system prompt 来自主线 `workspace/`，skills 仍可来自 bridge-kept 的 skill 资产目录；`agx` 只负责分发，不把这些资产重新定义成自己的产品边界。
+
 agx.yml 格式示例（可批量导入 keys/targets/bindings/profiles）：
 
 ```yaml
