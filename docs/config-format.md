@@ -8,7 +8,9 @@ AGX 的“配置中心”由两份主文件 + 可选 `agx.yml` 组成：
 
 - `~/.config/agx/keys.yaml`：keys + profile 轮转策略（**key 会被 AES-GCM 加密落盘**）
 - `~/.config/agx/providers.yaml`：targets（站点）+ family bindings（当前绑定）
-- `agx.yml`（可选，默认路径 `~/.config/agx/agx.yml`）：用于 `agx apply` 批量导入 keys/targets/bindings/profiles（也可包含 `assets:` 供 `agx sync` 使用）
+- `agx.yml`（可选，默认路径 `~/.config/agx/agx.yml`）：
+  用于 `agx apply` 批量导入 keys/targets/bindings/profiles，
+  也可包含 `assets:` 供 `agx sync` 使用
 
 ## keys.yaml
 

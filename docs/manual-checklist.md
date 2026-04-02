@@ -18,6 +18,7 @@ agx get sites
 ```
 
 预期：
+
 - 能看到 `openai / claude / gemini` 三个官方站点（内建，无需建站）。
 
 ## 1) OpenAI 官方号（官方站点 + 1 把 key）
@@ -78,6 +79,7 @@ agx status
 ```
 
 预期：
+
 - 两次 `agx openrouter` 后，`agx status` 里 openai 绑定的 active key 会在 `or-1 / or-2` 间轮换。
 
 ## 4) 站点高级参数（wire-api / requires-openai-auth）
@@ -102,6 +104,7 @@ agx status
 ```
 
 预期：
+
 - 回到上一次切换前的状态（包含原生配置文件与 AGX 绑定/active key）。
 
 ## 6) Claude：官方 + 中转（base-url）+ env 注入 + 不漂移

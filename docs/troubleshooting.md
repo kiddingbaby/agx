@@ -55,13 +55,18 @@ AGX 不负责会话管理；请直接运行 `codex` / `claude` / `gemini`。
 
 提示：
 
-- `agx create key --stdin` 在无 TTY 时需要 piped stdin；CI 建议改用显式 flags（例如 `agx create key <name> --site <site> --api-key-env VAR --activate`）。
+- `agx create key --stdin` 在无 TTY 时需要 piped stdin；
+  CI 建议改用显式 flags，
+  例如 `agx create key <name> --site <site> --api-key-env VAR --activate`。
 
 ### 7) `codex` 报错：Missing environment variable: OPENAI_API_KEY
 
 原因：
 
-- 你当前的 `~/.codex/config.toml` 里某个 `model_providers.*` block 配了 `env_key = "OPENAI_API_KEY"`，Codex 会强制要求该环境变量存在（不会从 `~/.codex/auth.json` 读取）。
+- 你当前的 `~/.codex/config.toml` 里某个 `model_providers.*` block
+  配了 `env_key = "OPENAI_API_KEY"`，
+  Codex 会强制要求该环境变量存在，
+  不会从 `~/.codex/auth.json` 读取。
 
 解决：
 

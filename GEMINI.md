@@ -11,7 +11,7 @@
 
 ## Repo Scope
 
-- `agx` 是独立的 env sync / provider switch 工具，不属于 Assist runtime。
+- `agx` 是独立的 env sync / provider switch 工具，不属于当前主线 runtime。
 - 优先保证 `agx use`、`agx sync`、`agx apply`、`agx init` 的 CLI 语义清晰，不为历史 prompt workflow 保留兼容层。
 
 ## Validation

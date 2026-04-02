@@ -215,7 +215,10 @@ agx apply ~/.config/agx/agx.yml
 
 ## 5) 全局资产同步（system prompts / skills / MCP）
 
-> 目标：把 **全局资产** 同步到各 CLI 的约定目录（`~/.codex` / `~/.claude` / `~/.gemini`），让你在任意项目里都能稳定触发 `$do/$review/$vibe-guardrails` 等 skills，并统一 system prompt。
+> 目标：把 **全局资产** 同步到各 CLI 的约定目录
+> （`~/.codex` / `~/.claude` / `~/.gemini`），
+> 让你在任意项目里都能稳定触发
+> `$do/$review/$vibe-guardrails` 等 skills，并统一 system prompt。
 
 `agx sync` 读取 `agx.yml` 里的 `assets:` 段（与 `agx apply` 无关），并执行三类动作：
 
@@ -274,7 +277,7 @@ CC Switch 的核心能力（切 key/base-url/model）在 AGX 里对应：
 agx import claude
 ```
 
-2) 切到 AGX 管理的 site：
+1) 切到 AGX 管理的 site：
 
 ```bash
 agx use <site>
