@@ -1,0 +1,75 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://agx.dev/schema/set.schema.json",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["relay", "changes"],
+  "properties": {
+    "relay": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["name", "base_url", "api_key", "created_at", "updated_at"],
+      "properties": {
+        "name": { "type": "string", "minLength": 1 },
+        "base_url": { "type": "string", "minLength": 1 },
+        "api_key": { "type": "string", "minLength": 1 },
+        "created_at": { "type": "string", "minLength": 1 },
+        "updated_at": { "type": "string", "minLength": 1 }
+      }
+    },
+    "changes": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["agent", "action", "backup"],
+        "properties": {
+          "agent": {
+            "type": "string",
+            "enum": ["codex", "claude", "gemini"]
+          },
+          "action": {
+            "type": "string",
+            "enum": ["bind", "unbind"]
+          },
+          "binding": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["agent", "relay", "status", "config_path", "last_applied_at", "last_backup_id"],
+            "properties": {
+              "agent": {
+                "type": "string",
+                "enum": ["codex", "claude", "gemini"]
+              },
+              "relay": { "type": "string", "minLength": 1 },
+              "status": { "type": "string", "enum": ["applied"] },
+              "config_path": { "type": "string", "minLength": 1 },
+              "last_applied_at": { "type": "string", "minLength": 1 },
+              "last_backup_id": { "type": "string", "minLength": 1 }
+            }
+          },
+          "backup": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["id", "config_path", "restore_mode", "created_at"],
+            "properties": {
+              "id": { "type": "string", "minLength": 1 },
+              "applied_relay": { "type": "string", "minLength": 1 },
+              "config_path": { "type": "string", "minLength": 1 },
+              "backup_path": { "type": "string", "minLength": 1 },
+              "restore_mode": {
+                "type": "string",
+                "enum": ["restore_file", "remove_created_file"]
+              },
+              "created_at": { "type": "string", "minLength": 1 }
+            }
+          },
+          "codex_profile": {
+            "type": "string",
+            "minLength": 1
+          }
+        }
+      }
+    }
+  }
+}

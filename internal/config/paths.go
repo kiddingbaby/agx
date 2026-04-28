@@ -8,22 +8,14 @@ import (
 
 // Paths contains resolved filesystem paths used by AGX runtime config.
 type Paths struct {
-	HomeDir            string
-	ConfigDir          string
-	StorePath          string
-	SecretPath         string
-	ProviderConfigPath string
-
-	ClaudeDir          string
+	ProfilesDir        string
+	StatePath          string
+	LockPath           string
+	OperationPath      string
+	CodexConfigPath    string
 	ClaudeSettingsPath string
-
-	CodexDir        string
-	CodexAuthPath   string
-	CodexConfigPath string
-
-	GeminiDir          string
 	GeminiEnvPath      string
-	GeminiSettingsPath string
+	BackupsDir         string
 }
 
 // DefaultPaths resolves ~/.config/agx paths.
@@ -34,22 +26,14 @@ func DefaultPaths() (Paths, error) {
 	}
 
 	configDir := filepath.Join(homeDir, ".config", "agx")
-	claudeDir := filepath.Join(homeDir, ".claude")
-	codexDir := filepath.Join(homeDir, ".codex")
-	geminiDir := filepath.Join(homeDir, ".gemini")
 	return Paths{
-		HomeDir:            homeDir,
-		ConfigDir:          configDir,
-		StorePath:          filepath.Join(configDir, "keys.yaml"),
-		SecretPath:         filepath.Join(configDir, "secret"),
-		ProviderConfigPath: filepath.Join(configDir, "providers.yaml"),
-		ClaudeDir:          claudeDir,
-		ClaudeSettingsPath: filepath.Join(claudeDir, "settings.json"),
-		CodexDir:           codexDir,
-		CodexAuthPath:      filepath.Join(codexDir, "auth.json"),
-		CodexConfigPath:    filepath.Join(codexDir, "config.toml"),
-		GeminiDir:          geminiDir,
-		GeminiEnvPath:      filepath.Join(geminiDir, ".env"),
-		GeminiSettingsPath: filepath.Join(geminiDir, "settings.json"),
+		ProfilesDir:        filepath.Join(configDir, "profiles"),
+		StatePath:          filepath.Join(configDir, "state.yaml"),
+		LockPath:           filepath.Join(configDir, "agx.lock"),
+		OperationPath:      filepath.Join(configDir, "ops", "current.yaml"),
+		CodexConfigPath:    filepath.Join(homeDir, ".codex", "config.toml"),
+		ClaudeSettingsPath: filepath.Join(homeDir, ".claude", "settings.json"),
+		GeminiEnvPath:      filepath.Join(homeDir, ".gemini", ".env"),
+		BackupsDir:         filepath.Join(configDir, "backups"),
 	}, nil
 }

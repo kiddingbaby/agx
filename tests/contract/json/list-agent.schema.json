@@ -1,0 +1,29 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://agx.dev/schema/list-agent.schema.json",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["agent", "current_relay", "relays"],
+  "properties": {
+    "agent": {
+      "type": "string",
+      "enum": ["codex", "claude", "gemini"]
+    },
+    "current_relay": {
+      "type": "string"
+    },
+    "relays": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["name", "base_url", "current"],
+        "properties": {
+          "name": { "type": "string", "minLength": 1 },
+          "base_url": { "type": "string", "minLength": 1 },
+          "current": { "type": "boolean" }
+        }
+      }
+    }
+  }
+}

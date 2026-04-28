@@ -1,0 +1,8 @@
+# help 输出保留核心命令面
+exec $AGX_BIN --help
+stdout 'agx add <relay>'
+stdout 'agx edit <relay>'
+stdout 'agx ls \[--agent codex\|claude\|gemini\]'
+stdout 'agx backup ls --agent codex\|claude\|gemini'
+stdout 'agx version'
+! stderr .

@@ -1,0 +1,28 @@
+# syntax=docker/dockerfile:1.7
+
+ARG GO_IMAGE=golang:1.24.9-bookworm
+ARG CUE_VERSION=v0.15.4
+FROM ${GO_IMAGE} AS verify
+
+ARG CUE_VERSION
+
+WORKDIR /src
+
+ENV PATH=/go/bin:${PATH}
+ENV GOPROXY=https://proxy.golang.org,direct
+ENV GOTOOLCHAIN=local
+ENV GOCACHE=/tmp/agx-go-build
+
+RUN apt-get update \
+  && apt-get install -y --no-install-recommends jq python3 ca-certificates \
+  && rm -rf /var/lib/apt/lists/*
+
+RUN --mount=type=cache,target=/root/.cache/go-build \
+  --mount=type=cache,target=/go/pkg/mod \
+  go install cuelang.org/go/cmd/cue@${CUE_VERSION}
+
+COPY . .
+
+RUN --mount=type=cache,target=/root/.cache/go-build \
+  --mount=type=cache,target=/go/pkg/mod \
+  bash tests/integration/check-portable.sh

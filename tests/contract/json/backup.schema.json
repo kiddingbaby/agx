@@ -1,0 +1,32 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://agx.dev/schema/backup.schema.json",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["agent", "backups"],
+  "properties": {
+    "agent": {
+      "type": "string",
+      "enum": ["codex", "claude", "gemini"]
+    },
+    "backups": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["id"],
+        "properties": {
+          "id": { "type": "string", "minLength": 1 },
+          "applied_relay": { "type": "string", "minLength": 1 },
+          "config_path": { "type": "string", "minLength": 1 },
+          "backup_path": { "type": "string", "minLength": 1 },
+          "restore_mode": {
+            "type": "string",
+            "enum": ["restore_file", "remove_created_file"]
+          },
+          "created_at": { "type": "string", "minLength": 1 }
+        }
+      }
+    }
+  }
+}

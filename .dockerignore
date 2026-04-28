@@ -1,0 +1,10 @@
+.git
+.build
+.tmp
+.serena
+.codex
+.claude
+.gemini
+.workflow
+.vscode
+node_modules

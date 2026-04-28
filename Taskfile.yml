@@ -1,0 +1,188 @@
+version: '3'
+
+env:
+  GOCACHE: '{{default "/tmp/agx-go-build" .GOCACHE}}'
+
+vars:
+  CACHE_DIR:
+    sh: |
+      if [ -n "${AGX_CACHE_DIR:-}" ]; then
+        printf '%s\n' "$AGX_CACHE_DIR"
+      elif [ -n "${XDG_CACHE_HOME:-}" ]; then
+        printf '%s/agx\n' "$XDG_CACHE_HOME"
+      else
+        printf '%s/.cache/agx\n' "$HOME"
+      fi
+  BIN: '{{.CACHE_DIR}}/bin/agx'
+  DIST_DIR: '{{.CACHE_DIR}}/dist'
+  COVERPROFILE: '{{.CACHE_DIR}}/coverage.out'
+  COVERHTML: '{{.CACHE_DIR}}/coverage.html'
+  VERSION:
+    sh: git describe --tags --always --dirty 2>/dev/null || echo dev
+  COMMIT:
+    sh: git rev-parse --short HEAD 2>/dev/null || echo unknown
+  DATE:
+    sh: date -u +%Y-%m-%dT%H:%M:%SZ
+
+tasks:
+  default:
+    desc: Show available tasks
+    cmds:
+      - task --list
+
+  setup:
+    desc: Install pinned local toolchain with mise
+    cmds:
+      - mise trust -y mise.toml
+      - mise install
+
+  build:
+    desc: Build AGX
+    cmds:
+      - mkdir -p "$(dirname '{{.BIN}}')"
+      - mise exec -- go build -ldflags="-s -w -X main.version={{.VERSION}} -X main.commit={{.COMMIT}} -X main.date={{.DATE}}" -o {{.BIN}} ./cmd/agx
+
+  install:
+    desc: Build and install AGX to ~/.local/bin/agx
+    deps:
+      - build
+    cmds:
+      - mkdir -p "$HOME/.local/bin"
+      - install -m 755 {{.BIN}} "$HOME/.local/bin/agx"
+
+  help:
+    desc: Show available tasks
+    cmds:
+      - task --list
+
+  clean:
+    desc: Remove local build and runtime artifacts
+    cmds:
+      - rm -rf "{{.CACHE_DIR}}" .build .tmp .runtime
+
+  test:
+    desc: Run Go tests
+    cmds:
+      - mise exec -- go test ./...
+
+  coverage:
+    desc: Run Go tests with the repo-wide coverage metric and print the summary
+    cmds:
+      - mkdir -p "{{.CACHE_DIR}}"
+      - mise exec -- go test -coverprofile="{{.COVERPROFILE}}" ./...
+      - mise exec -- go tool cover -func="{{.COVERPROFILE}}"
+
+  coverage-html:
+    desc: Render the latest repo-wide Go coverage report as HTML
+    cmds:
+      - task: coverage
+      - mise exec -- go tool cover -html="{{.COVERPROFILE}}" -o "{{.COVERHTML}}"
+
+  gotestsum:
+    desc: Run Go tests with gotestsum
+    cmds:
+      - mise exec -- go tool gotestsum --format pkgname -- ./...
+
+  property:
+    desc: Run rapid property tests
+    cmds:
+      - mise exec -- go test ./internal/domain/profile ./internal/usecase -run Property
+
+  cue:
+    desc: Run CUE contract checks against fresh CLI output
+    deps:
+      - build
+    cmds:
+      - mise exec -- bash tests/integration/cue-check.sh "{{.BIN}}"
+
+  portable-check:
+    desc: Run the portable verification suite shared by host and Docker
+    cmds:
+      - mise exec -- bash tests/integration/check-portable.sh
+
+  docker-check:
+    desc: Run the default Docker Bake portable verification target
+    cmds:
+      - docker buildx bake docker-check --progress=plain
+
+  docker-matrix:
+    desc: Run the Docker Bake portable verification matrix
+    cmds:
+      - docker buildx bake docker-matrix --progress=plain
+
+  contract:
+    desc: Run testscript-based CLI contracts
+    deps:
+      - build
+    cmds:
+      - mise exec -- go test -tags=contract ./tests/script/...
+
+  contract-json:
+    desc: Run JSON schema contract tests
+    deps:
+      - build
+    cmds:
+      - mise exec -- go test -tags=contract ./tests/contract/json/...
+
+  interactive:
+    desc: Run interactive CLI tests
+    deps:
+      - build
+    cmds:
+      - mise exec -- go test -tags=interactive ./tests/interactive/...
+
+  integration:
+    desc: Run the shared portable verification suite
+    cmds:
+      - task: portable-check
+
+  e2e:
+    desc: Run shell e2e smoke
+    cmds:
+      - mise exec -- bash tests/e2e/cli-smoke.sh
+
+  bats:
+    desc: Run bats-style e2e smoke
+    cmds:
+      - mise exec -- bash tests/e2e/run-bats.sh
+
+  smoke:
+    desc: Run the default smoke suite
+    cmds:
+      - task: check
+
+  real-smoke:
+    desc: Run real local codex/claude/gemini smoke checks when available
+    cmds:
+      - mise exec -- bash tests/e2e/real-cli-smoke.sh
+
+  release-check:
+    desc: Validate GoReleaser config
+    cmds:
+      - mise exec -- goreleaser check
+
+  release-snapshot:
+    desc: Build local release archives with GoReleaser
+    deps:
+      - test
+      - release-check
+    cmds:
+      - rm -rf "{{.DIST_DIR}}"
+      - >
+        TMP_CONFIG="$(mktemp)";
+        trap 'rm -f "$TMP_CONFIG"' EXIT;
+        ESCAPED_DIST="$(printf '%s\n' '{{.DIST_DIR}}' | sed 's/[\/&]/\\&/g')";
+        sed "s/^dist: dist$/dist: ${ESCAPED_DIST}/" .goreleaser.yml >"$TMP_CONFIG";
+        mise exec -- goreleaser release -f "$TMP_CONFIG" --snapshot --clean
+
+  check:
+    desc: Run the default local verification suite
+    cmds:
+      - task: portable-check
+
+  check-all:
+    desc: Run portable verification, release config checks, and real local agent CLI smoke
+    cmds:
+      - task: check
+      - task: release-check
+      - task: real-smoke

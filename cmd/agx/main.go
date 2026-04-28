@@ -8,6 +8,12 @@ import (
 	"github.com/kiddingbaby/agx/internal/interfaces/cli"
 )
 
+var (
+	version = "dev"
+	commit  = "unknown"
+	date    = "unknown"
+)
+
 func main() {
 	container, err := app.Bootstrap()
 	if err != nil {
@@ -16,10 +22,12 @@ func main() {
 	}
 
 	root := cli.New(
-		container.KeyService,
-		container.ProviderService,
-		container.SwitchService,
-		container.EnvSyncService,
+		container.ProfileService,
+		cli.BuildInfo{
+			Version: version,
+			Commit:  commit,
+			Date:    date,
+		},
 	)
 
 	os.Exit(root.Execute(os.Args[1:]))

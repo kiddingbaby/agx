@@ -3,48 +3,43 @@ package app
 import (
 	"fmt"
 
-	"github.com/kiddingbaby/agx/internal/adapters/configfile"
-	"github.com/kiddingbaby/agx/internal/adapters/executil"
-	"github.com/kiddingbaby/agx/internal/adapters/keyfile"
-	"github.com/kiddingbaby/agx/internal/adapters/toolconfig"
-	"github.com/kiddingbaby/agx/internal/adapters/undofile"
+	"github.com/kiddingbaby/agx/internal/adapters/claudeconfig"
+	"github.com/kiddingbaby/agx/internal/adapters/codexconfig"
+	"github.com/kiddingbaby/agx/internal/adapters/geminiconfig"
+	"github.com/kiddingbaby/agx/internal/adapters/lockfile"
+	"github.com/kiddingbaby/agx/internal/adapters/opjournal"
+	"github.com/kiddingbaby/agx/internal/adapters/profilefile"
 	"github.com/kiddingbaby/agx/internal/config"
 	"github.com/kiddingbaby/agx/internal/usecase"
 )
 
-// Bootstrap initializes runtime dependencies and returns app container.
+// Bootstrap runs startup preparation, initializes runtime dependencies, and returns the app container.
 func Bootstrap() (*Container, error) {
 	paths, err := config.DefaultPaths()
 	if err != nil {
 		return nil, err
 	}
+	startupLock := lockfile.New(paths.LockPath)
 
-	secretProvider := config.NewSecretProvider(paths)
-	secret, err := secretProvider.Load()
+	helperCommand, err := config.ResolveHelperCommand()
 	if err != nil {
 		return nil, err
 	}
 
-	store, err := keyfile.NewRepository(paths.StorePath, secret)
+	profiles, err := profilefile.NewRepository(paths.ProfilesDir)
 	if err != nil {
-		return nil, fmt.Errorf("initialize key store: %w", err)
-	}
-	providerRegistry, err := configfile.NewProviderRegistry(paths.ProviderConfigPath)
-	if err != nil {
-		return nil, fmt.Errorf("initialize provider config: %w", err)
+		return nil, fmt.Errorf("initialize profile store: %w", err)
 	}
 
-	keySvc := usecase.NewKeyService(store)
-	providerSvc := usecase.NewProviderService(providerRegistry)
-	configSyncer := toolconfig.NewSyncer(paths)
-	undoStore := undofile.NewStore(paths)
-	switchSvc := usecase.NewSwitchService(keySvc, providerSvc, configSyncer, undoStore)
-	envSyncSvc := usecase.NewEnvSyncService(paths, executil.NewRunner())
+	state := profilefile.NewStateRepository(paths.StatePath)
+	codexSyncer := codexconfig.NewSyncer(paths.CodexConfigPath, paths.BackupsDir, helperCommand)
+	claudeSyncer := claudeconfig.NewSyncer(paths.ClaudeSettingsPath, paths.BackupsDir, helperCommand)
+	geminiSyncer := geminiconfig.NewSyncer(paths.GeminiEnvPath, paths.BackupsDir)
+	profileSvc := usecase.NewProfileService(profiles, state, codexSyncer, claudeSyncer, geminiSyncer)
+	profileSvc.SetMutationLocker(startupLock)
+	profileSvc.SetOperationJournal(opjournal.New(paths.OperationPath))
 
 	return &Container{
-		KeyService:      keySvc,
-		ProviderService: providerSvc,
-		SwitchService:   switchSvc,
-		EnvSyncService:  envSyncSvc,
+		ProfileService: profileSvc,
 	}, nil
 }

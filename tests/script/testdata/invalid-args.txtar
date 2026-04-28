@@ -1,0 +1,12 @@
+# invalid args fail with clear messages
+! exec $AGX_BIN add relay-old --base-url https://relay-old.example/v1 --api-key sk-old --agent codex
+stderr 'Usage: agx add <relay> --base-url URL --api-key KEY'
+
+exec $AGX_BIN add relay-a --base-url https://relay-a.example/v1 --api-key sk-a
+stdout 'Added relay: relay-a'
+
+! exec $AGX_BIN backup ls wrong
+stderr 'Usage: agx backup ls --agent codex\|claude\|gemini \[-o json\]'
+
+! exec $AGX_BIN backup ls --agent wrong
+stderr 'Agent must be one of: codex, claude, gemini.'

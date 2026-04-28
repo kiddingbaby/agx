@@ -1,98 +1,78 @@
 package cli
 
 import (
-	"sort"
 	"time"
 
-	domainkey "github.com/kiddingbaby/agx/internal/domain/key"
-	domainprovider "github.com/kiddingbaby/agx/internal/domain/provider"
+	domainprofile "github.com/kiddingbaby/agx/internal/domain/profile"
 )
 
-type targetView struct {
-	Name               string                    `json:"name"`
-	Family             domainprovider.Family     `json:"family"`
-	Kind               domainprovider.Kind       `json:"kind"`
-	Access             domainprovider.AccessMode `json:"access"`
-	Auth               domainprovider.AuthMode   `json:"auth"`
-	BaseURL            string                    `json:"base_url,omitempty"`
-	Model              string                    `json:"model,omitempty"`
-	EnvKeys            []string                  `json:"env_keys,omitempty"`
-	Env                map[string]string         `json:"env,omitempty"`
-	WireAPI            domainprovider.WireAPI    `json:"wire_api,omitempty"`
-	RequiresOpenAIAuth *bool                     `json:"requires_openai_auth,omitempty"`
+type profileView struct {
+	Name      string    `json:"name"`
+	BaseURL   string    `json:"base_url"`
+	APIKey    string    `json:"api_key"`
+	CreatedAt time.Time `json:"created_at,omitempty"`
+	UpdatedAt time.Time `json:"updated_at,omitempty"`
 }
 
-func toTargetView(target domainprovider.Target, revealEnv bool) targetView {
-	keys := make([]string, 0, len(target.Env))
-	for k := range target.Env {
-		keys = append(keys, k)
-	}
-	sort.Strings(keys)
+type listProfileView struct {
+	Name    string                `json:"name"`
+	BaseURL string                `json:"base_url"`
+	Agents  []domainprofile.Agent `json:"agents"`
+	Current bool                  `json:"current,omitempty"`
+}
 
-	out := targetView{
-		Name:               target.Name,
-		Family:             target.Family,
-		Kind:               target.Kind,
-		Access:             target.Access,
-		Auth:               target.Auth,
-		BaseURL:            target.BaseURL,
-		Model:              target.Model,
-		EnvKeys:            keys,
-		WireAPI:            target.WireAPI,
-		RequiresOpenAIAuth: target.RequiresOpenAIAuth,
-	}
-	if revealEnv && len(target.Env) > 0 {
-		out.Env = make(map[string]string, len(target.Env))
-		for k, v := range target.Env {
-			out.Env[k] = v
-		}
-	}
-	return out
+type listAgentRelayView struct {
+	Name    string `json:"name"`
+	BaseURL string `json:"base_url"`
+	Current bool   `json:"current"`
 }
 
 type bindingView struct {
-	Family domainprovider.Family `json:"family"`
-	Target string                `json:"target"`
+	Agent         domainprofile.Agent         `json:"agent"`
+	Relay         string                      `json:"relay,omitempty"`
+	Status        domainprofile.BindingStatus `json:"status,omitempty"`
+	ConfigPath    string                      `json:"config_path,omitempty"`
+	LastAppliedAt time.Time                   `json:"last_applied_at,omitempty"`
+	LastBackupID  string                      `json:"last_backup_id,omitempty"`
 }
 
-func toBindingView(binding domainprovider.Binding) bindingView {
+type backupView struct {
+	ID          string                    `json:"id"`
+	AppliedRelay string                   `json:"applied_relay,omitempty"`
+	ConfigPath  string                    `json:"config_path,omitempty"`
+	BackupPath  string                    `json:"backup_path,omitempty"`
+	RestoreMode domainprofile.RestoreMode `json:"restore_mode,omitempty"`
+	CreatedAt   time.Time                 `json:"created_at,omitempty"`
+}
+
+func toProfileView(profile domainprofile.Profile) profileView {
+	return profileView{
+		Name:      profile.Name,
+		BaseURL:   profile.BaseURL,
+		APIKey:    profile.APIKey,
+		CreatedAt: profile.CreatedAt,
+		UpdatedAt: profile.UpdatedAt,
+	}
+}
+
+func toBindingView(agent domainprofile.Agent, binding domainprofile.AgentBinding) bindingView {
 	return bindingView{
-		Family: binding.Family,
-		Target: binding.Target,
+		Agent:         agent,
+		Relay:         binding.SourceProfile,
+		Status:        binding.Status,
+		ConfigPath:    binding.ConfigPath,
+		LastAppliedAt: binding.LastAppliedAt,
+		LastBackupID:  binding.LastBackupID,
 	}
 }
 
-type keyView struct {
-	ID        string             `json:"id"`
-	Provider  domainkey.Provider `json:"provider"`
-	Profile   string             `json:"profile"`
-	Name      string             `json:"name"`
-	BaseURL   string             `json:"base_url,omitempty"`
-	Tags      []string           `json:"tags,omitempty"`
-	Active    bool               `json:"active"`
-	CreatedAt time.Time          `json:"created_at,omitempty"`
-	UpdatedAt time.Time          `json:"updated_at,omitempty"`
-}
-
-func toKeyView(k domainkey.Key, normalizedProfile string) keyView {
-	return keyView{
-		ID:        k.ID,
-		Provider:  k.Provider,
-		Profile:   normalizedProfile,
-		Name:      k.Name,
-		BaseURL:   k.BaseURL,
-		Tags:      k.Tags,
-		Active:    k.Active,
-		CreatedAt: k.CreatedAt,
-		UpdatedAt: k.UpdatedAt,
+func toBackupView(backup domainprofile.Backup) backupView {
+	return backupView{
+		ID:           backup.ID,
+		AppliedRelay: backup.AppliedProfile,
+		ConfigPath:   backup.ConfigPath,
+		BackupPath:   backup.BackupPath,
+		RestoreMode:  backup.RestoreMode,
+		CreatedAt:    backup.CreatedAt,
 	}
-}
-
-type profileView struct {
-	Provider  domainkey.Provider         `json:"provider"`
-	Name      string                     `json:"name"`
-	Strategy  domainkey.RotationStrategy `json:"strategy"`
-	FixedKey  string                     `json:"fixed_key,omitempty"`
-	NextIndex int                        `json:"next_index,omitempty"`
-	UpdatedAt time.Time                  `json:"updated_at,omitempty"`
 }

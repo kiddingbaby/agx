@@ -1,0 +1,22 @@
+# same relay can be bound to codex and claude
+exec $AGX_BIN add relay-a --base-url https://relay-a.example/v1 --api-key sk-a
+stdout 'Added relay: relay-a'
+
+exec $AGX_BIN edit relay-a --bind codex
+stdout 'Updated relay bindings: relay-a'
+stdout 'backup_id=before-codex-sync-'
+
+exec $AGX_BIN edit relay-a --bind claude
+stdout 'Updated relay bindings: relay-a'
+
+exec $AGX_BIN ls
+stdout 'agents=codex,claude'
+
+-- home/.codex/config.toml --
+profile = "before"
+-- home/.claude/settings.json --
+{
+  "env": {
+    "KEEP_ME": "1"
+  }
+}

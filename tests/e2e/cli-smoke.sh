@@ -2,46 +2,146 @@
 set -euo pipefail
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
-BIN="${1:-$ROOT/.tmp/agx-smoke}"
+if [[ -n "${AGX_CACHE_DIR:-}" ]]; then
+  CACHE_DIR="$AGX_CACHE_DIR"
+elif [[ -n "${XDG_CACHE_HOME:-}" ]]; then
+  CACHE_DIR="$XDG_CACHE_HOME/agx"
+else
+  CACHE_DIR="$HOME/.cache/agx"
+fi
+BIN="${1:-$CACHE_DIR/bin/agx-smoke}"
 
-export GOCACHE="${GOCACHE:-$ROOT/.tmp/go-build-cache}"
+export GOCACHE="${GOCACHE:-/tmp/agx-go-build}"
 mkdir -p "$GOCACHE"
-
 mkdir -p "$(dirname "$BIN")"
+
 (cd "$ROOT" && go build -o "$BIN" ./cmd/agx)
 
 TMP_HOME="$(mktemp -d)"
 trap 'rm -rf "$TMP_HOME"' EXIT
+RM_BOUND_OUT="$TMP_HOME/rm-bound.out"
+RM_BOUND_ERR="$TMP_HOME/rm-bound.err"
+INVALID_OUT="$TMP_HOME/invalid-args.out"
+INVALID_ERR="$TMP_HOME/invalid-args.err"
 
 export HOME="$TMP_HOME"
-export AGX_SECRET="12345678901234567890123456789012"
 
-"$BIN" --help >/dev/null
-"$BIN" get sites | grep -q "openai"
+"$BIN" --help | grep -q "agx add <relay>"
+"$BIN" --help | grep -q "agx edit <relay>"
+"$BIN" --help | grep -q "agx backup ls --agent"
+"$BIN" --help | grep -q "agx doctor"
+"$BIN" doctor | grep -q "Doctor: ok"
 
-"$BIN" create site claude-proxy --template claude-proxy --base-url https://claude-proxy.local --no-keys >/dev/null
-"$BIN" create key smoke-claude --site claude-proxy --api-key sk-test --activate >/dev/null
-"$BIN" get keys --site claude-proxy | grep -q "smoke-claude"
-"$BIN" use claude-proxy >/dev/null
-grep -q '"ANTHROPIC_API_KEY": "sk-test"' "$HOME/.claude/settings.json"
-grep -q '"ANTHROPIC_BASE_URL": "https://claude-proxy.local"' "$HOME/.claude/settings.json"
+mkdir -p "$HOME/.codex" "$HOME/.claude"
+printf 'profile = "before"\n' >"$HOME/.codex/config.toml"
+cat >"$HOME/.claude/settings.json" <<'JSON'
+{
+  "env": {
+    "KEEP_ME": "1"
+  }
+}
+JSON
 
-"$BIN" create site openrouter --template openrouter --no-keys >/dev/null
-"$BIN" create key smoke-openai --site openrouter --api-key sk-openai --activate >/dev/null
-"$BIN" use openrouter >/dev/null
-grep -q '"auth_mode": "apikey"' "$HOME/.codex/auth.json"
-grep -q '"OPENAI_API_KEY": "sk-openai"' "$HOME/.codex/auth.json"
-grep -q 'model_provider = "agx"' "$HOME/.codex/config.toml"
-grep -q 'base_url = "https://openrouter.ai/api/v1"' "$HOME/.codex/config.toml"
+"$BIN" add relay-a --base-url https://relay-a.example/v1 --api-key sk-a >/dev/null
+"$BIN" show relay-a | grep -q "agents=-"
+"$BIN" ls | grep -q "agents=-"
+"$BIN" doctor | grep -q "Doctor: ok"
+grep -q '^profile = "before"$' "$HOME/.codex/config.toml"
 
-"$BIN" create site gemini-proxy --template gemini-proxy --base-url https://gemini-proxy.local --no-keys >/dev/null
-"$BIN" create key smoke-gemini --site gemini-proxy --api-key sk-gemini --activate >/dev/null
-"$BIN" use gemini-proxy >/dev/null
-grep -q '"selectedType": "gemini-api-key"' "$HOME/.gemini/settings.json"
-grep -q 'GEMINI_API_KEY=sk-gemini' "$HOME/.gemini/.env"
-grep -q 'GOOGLE_GEMINI_BASE_URL=https://gemini-proxy.local' "$HOME/.gemini/.env"
+BIND_OUT="$("$BIN" edit relay-a --bind codex,claude)"
+printf '%s\n' "$BIND_OUT" | grep -q "Updated relay bindings: relay-a"
+printf '%s\n' "$BIND_OUT" | grep -q "bind claude"
+printf '%s\n' "$BIND_OUT" | grep -q "bind codex"
+"$BIN" show relay-a | grep -q "agents=codex,claude"
+"$BIN" ls | grep -q "agents=codex,claude"
+"$BIN" ls --agent codex | grep -q "Current: relay-a"
+"$BIN" ls --agent codex | grep -q '\* relay-a'
+"$BIN" backup ls --agent codex | grep -q "backup_id=before-codex-sync-"
+"$BIN" backup ls --agent codex | grep -q "restore_mode=restore_file"
 
-"$BIN" status >/dev/null
-JSON_OUT="$("$BIN" status -o json)"
-echo "$JSON_OUT" | jq -e '.bindings | length >= 3' >/dev/null
-echo "[ok] e2e smoke passed"
+"$BIN" edit relay-a --base-url https://relay-a-new.example/v1 --api-key sk-rotated >/dev/null
+"$BIN" ls | grep -q "agents=codex,claude"
+grep -q 'base_url = "https://relay-a-new.example/v1"' "$HOME/.codex/config.toml"
+grep -q '"ANTHROPIC_BASE_URL": "https://relay-a-new.example/v1"' "$HOME/.claude/settings.json"
+
+set +e
+"$BIN" rm relay-a >"$RM_BOUND_OUT" 2>"$RM_BOUND_ERR"
+rc=$?
+set -e
+[ "$rc" -ne 0 ]
+grep -q "relay relay-a is currently bound to codex, claude" "$RM_BOUND_ERR"
+
+"$BIN" edit relay-a --unbind codex | grep -q "unbind codex"
+"$BIN" show relay-a | grep -q "agents=claude"
+"$BIN" restore --agent codex | grep -q "Restored agent: codex"
+"$BIN" backup ls --agent codex | grep -q "Backups for codex:"
+
+python3 - "$BIN" "$HOME" <<'PY'
+import os
+import pty
+import select
+import subprocess
+import sys
+import time
+
+bin_path = sys.argv[1]
+home = sys.argv[2]
+master, slave = pty.openpty()
+proc = subprocess.Popen(
+    [bin_path, "add"],
+    stdin=slave,
+    stdout=slave,
+    stderr=slave,
+    env={**os.environ, "HOME": home},
+)
+os.close(slave)
+
+time.sleep(0.2)
+os.write(master, b"relay-paste\nhttps://relay-paste.example/v1\nsk-paste\n")
+
+output = b""
+deadline = time.time() + 5
+while time.time() < deadline:
+    if proc.poll() is not None:
+        break
+    ready, _, _ = select.select([master], [], [], 0.2)
+    if not ready:
+        continue
+    try:
+        chunk = os.read(master, 4096)
+    except OSError:
+        break
+    if not chunk:
+        break
+    output += chunk
+    if b"Added relay: relay-paste" in output:
+        break
+
+rc = proc.wait(timeout=5)
+text = output.decode("utf-8", errors="replace")
+if rc != 0:
+    sys.stderr.write(text)
+    raise SystemExit(rc)
+if "Added relay: relay-paste" not in text:
+    sys.stderr.write(text)
+    raise SystemExit("interactive add over PTY did not complete as expected")
+PY
+
+JSON_OUT="$("$BIN" show relay-a -o json)"
+echo "$JSON_OUT" | jq -e '.agent_bindings | length >= 1' >/dev/null
+
+set +e
+"$BIN" add relay-old --base-url https://relay-old.example/v1 --api-key sk-old --agent codex >"$INVALID_OUT" 2>"$INVALID_ERR"
+rc=$?
+set -e
+[ "$rc" -ne 0 ]
+grep -q "Usage: agx add <relay> --base-url URL --api-key KEY" "$INVALID_ERR"
+
+set +e
+"$BIN" restore codex >"$INVALID_OUT" 2>"$INVALID_ERR"
+rc=$?
+set -e
+[ "$rc" -ne 0 ]
+grep -q "Usage: agx restore --agent codex\|claude\|gemini \[--to BACKUP_ID\] \[-o json\]" "$INVALID_ERR"
+
+echo "[ok] relay smoke passed"

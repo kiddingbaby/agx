@@ -1,21 +1,26 @@
 # Binary
 /agx
-.build/
-.tmp/
 
 # IDE
 .idea/
 .vscode/
 
+# Local tool state
+.claude/
+.gemini/
+.codex
+.codex/
+.serena/
+.workflow/
+
 # OS
 .DS_Store
 
-# Agent files
-.workflow/*
-!.workflow/config/
-.workflow/config/*
-!.workflow/config/workflow.yml
-agx
+# Local notes
 DESIGN.md
 SPECS.md
 TODO.md
+
+# Local overrides
+mise.local.toml
+.mise.local.toml

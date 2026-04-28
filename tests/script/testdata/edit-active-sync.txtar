@@ -1,0 +1,23 @@
+# edit 自动同步当前绑定 agent，状态保持绑定
+exec $AGX_BIN add relay-a --base-url https://relay-a.example/v1 --api-key sk-a
+stdout 'Added relay: relay-a'
+
+exec $AGX_BIN edit relay-a --bind codex,claude
+stdout 'Updated relay bindings: relay-a'
+stdout 'bind claude'
+stdout 'bind codex'
+
+exec $AGX_BIN edit relay-a --base-url https://relay-a-new.example/v1
+stdout 'Edited relay: relay-a'
+stdout 'base_url=https://relay-a-new.example/v1'
+
+exec $AGX_BIN ls
+stdout 'agents=codex,claude'
+
+exec $AGX_BIN backup ls --agent codex
+stdout 'Backups for codex:'
+stdout 'backup_id=before-codex-sync-'
+stdout 'restore_mode=restore_file'
+
+-- home/.codex/config.toml --
+profile = "before"

@@ -1,0 +1,45 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://agx.dev/schema/doctor.schema.json",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["ok", "issues"],
+  "properties": {
+    "ok": {
+      "type": "boolean"
+    },
+    "operation": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["id", "command", "agent", "stage", "started_at", "updated_at"],
+      "properties": {
+        "id": { "type": "string", "minLength": 1 },
+        "command": { "type": "string", "minLength": 1 },
+        "agent": {
+          "type": "string",
+          "enum": ["codex", "claude", "gemini"]
+        },
+        "relay": { "type": "string", "minLength": 1 },
+        "backup_id": { "type": "string", "minLength": 1 },
+        "config_path": { "type": "string", "minLength": 1 },
+        "backup_path": { "type": "string", "minLength": 1 },
+        "stage": { "type": "string", "minLength": 1 },
+        "started_at": { "type": "string", "minLength": 1 },
+        "updated_at": { "type": "string", "minLength": 1 }
+      }
+    },
+    "issues": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["severity", "code", "message"],
+        "properties": {
+          "severity": { "type": "string", "minLength": 1 },
+          "code": { "type": "string", "minLength": 1 },
+          "message": { "type": "string", "minLength": 1 }
+        }
+      }
+    }
+  }
+}

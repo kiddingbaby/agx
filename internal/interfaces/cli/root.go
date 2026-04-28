@@ -4,115 +4,133 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"strings"
 
 	"github.com/kiddingbaby/agx/internal/usecase"
 )
 
-type Root struct {
-	keySvc      *usecase.KeyService
-	providerSvc *usecase.ProviderService
-	switchSvc   *usecase.SwitchService
-	envSyncSvc  *usecase.EnvSyncService
+const internalAPIKeyCommand = "__api-key"
 
-	stdout io.Writer
-	stderr io.Writer
-	getwd  func() (string, error)
+var supportedCommands = []string{
+	"add",
+	"edit",
+	"ls",
+	"show",
+	"restore",
+	"backup",
+	"doctor",
+	"rm",
+	"version",
 }
 
-func New(
-	keySvc *usecase.KeyService,
-	providerSvc *usecase.ProviderService,
-	switchSvc *usecase.SwitchService,
-	envSyncSvc *usecase.EnvSyncService,
-) *Root {
-	return &Root{
-		keySvc:      keySvc,
-		providerSvc: providerSvc,
-		switchSvc:   switchSvc,
-		envSyncSvc:  envSyncSvc,
-		stdout:      os.Stdout,
-		stderr:      os.Stderr,
-		getwd:       os.Getwd,
+type Root struct {
+	profiles *usecase.ProfileService
+	build    BuildInfo
+	stdin    io.Reader
+	stdout   io.Writer
+	stderr   io.Writer
+	isTTY    func() bool
+}
+
+type BuildInfo struct {
+	Version string
+	Commit  string
+	Date    string
+}
+
+func (info BuildInfo) normalized() BuildInfo {
+	if strings.TrimSpace(info.Version) == "" {
+		info.Version = "dev"
 	}
+	if strings.TrimSpace(info.Commit) == "" {
+		info.Commit = "unknown"
+	}
+	if strings.TrimSpace(info.Date) == "" {
+		info.Date = "unknown"
+	}
+	return info
+}
+
+func New(profiles *usecase.ProfileService, build BuildInfo) *Root {
+	root := &Root{
+		profiles: profiles,
+		build:    build.normalized(),
+		stdin:    os.Stdin,
+		stdout:   os.Stdout,
+		stderr:   os.Stderr,
+	}
+	root.isTTY = func() bool {
+		return isTerminalReader(root.stdin)
+	}
+	return root
 }
 
 func (r *Root) Execute(args []string) int {
 	if len(args) == 0 {
-		return r.handleStatus(nil)
+		r.printHelp()
+		return 0
 	}
 
 	switch args[0] {
-	case "use":
-		return r.handleUse(args[1:])
-	case "undo":
-		return r.handleUndo(args[1:])
-	case "init":
-		return r.handleInit(args[1:])
-	case "sync":
-		return r.handleSync(args[1:])
-	case "apply":
-		return r.handleApply(args[1:])
-	case "import":
-		return r.handleImport(args[1:])
-	case "status":
-		return r.handleStatus(args[1:])
-	case "get":
-		return r.handleGet(args[1:])
-	case "describe":
-		return r.handleDescribe(args[1:])
-	case "create":
-		return r.handleCreate(args[1:])
-	case "patch":
-		return r.handlePatch(args[1:])
-	case "delete":
-		return r.handleDelete(args[1:])
+	case "add":
+		return r.handleAdd(args[1:])
+	case "edit":
+		return r.handleEdit(args[1:])
+	case "ls":
+		return r.handleList(args[1:])
+	case "show":
+		return r.handleShow(args[1:])
+	case "restore":
+		return r.handleRestore(args[1:])
+	case "backup":
+		return r.handleBackup(args[1:])
+	case "doctor":
+		return r.handleDoctor(args[1:])
+	case "rm":
+		return r.handleRemove(args[1:])
+	case "version", "--version":
+		r.printVersion()
+		return 0
+	case internalAPIKeyCommand:
+		return r.handleInternalAPIKey(args[1:])
 	case "help", "-h", "--help":
 		r.printHelp()
 		return 0
-	case "site", "add", "k", "ls", "config", "keys", "provider", "providers":
-		fmt.Fprintf(r.stderr, "Error: command removed: %s\n", args[0])
-		fmt.Fprintln(r.stderr, "Tip: run `agx help` for the new command layout.")
-		return 1
 	default:
 		fmt.Fprintf(r.stderr, "Error: unknown command: %s\n", args[0])
-		fmt.Fprintln(r.stderr, "Tip: did you mean `agx use <site>`?")
+		fmt.Fprintf(r.stderr, "Supported commands: %s\n", strings.Join(supportedCommands, ", "))
 		return 1
 	}
 }
 
 func (r *Root) printHelp() {
-	fmt.Fprint(r.stdout, `AGX - AI CLI Config Switcher
+	fmt.Fprint(r.stdout, `AGX - Relay Manager
 
 Usage:
-  agx                                 Show status (bindings + current site)
-  agx status [-o json]                Show status
-  agx use <site> [--agents codex,claude,gemini|all] [--key KEY | -l TAGS] [--dry-run] [-o json] Switch site + sync native CLI configs
-  agx undo [-o json]                  Undo last switch (restore previous configs)
-
-Resources:
-  agx get sites [-o json]
-  agx describe site <site> [-o json]
-  agx create site <site> ...
-  agx patch site <site> ...
-  agx delete site <site> [-o json]
-
-  agx get keys [--site <site>] [-A] [-l TAGS] [-o json]
-  agx describe key <key> [--site <site>] [-o json]
-  agx create key [name] [--site <site>] (--stdin | --api-key ... | --api-key-env ... | --api-key-file ...) [--activate] [--tags TAGS] [-o json]
-  agx patch key <key> [--site <site>] [--name NEW] [--tags TAGS] [--activate] [-o json]
-  agx delete key <key> [--site <site>] [-o json]
-
-Config:
-  agx init                              Generate a starter config template (~/.config/agx/agx.yml)
-  agx apply [PATH|DIR] [-o json]        Apply config into AGX stores (keys/targets/bindings/profiles)
-  agx sync [skills|system-prompt|mcp]   Sync global agent assets (skills/system prompts/MCP)
-  agx import claude [--site <site>]     Import current Claude credentials from native config into AGX
+  agx                                         Show this help
+  agx add <relay> --base-url URL --api-key KEY [--bind codex,claude,gemini] [-o json]
+  agx edit <relay> [--base-url URL] [--api-key KEY] [--bind codex,claude,gemini] [--unbind codex,claude,gemini] [-o json]
+  agx ls [--agent codex|claude|gemini] [-o json]
+  agx show <relay> [-o json]
+  agx restore --agent codex|claude|gemini [--to BACKUP_ID] [-o json]
+  agx backup ls --agent codex|claude|gemini [-o json]
+  agx doctor [-o json]
+  agx rm <relay> [-o json]
+  agx version
 
 Notes:
-  - Official sites: openai | claude | gemini
-  - Multi-protocol sites: if <site>-codex/<site>-claude/<site>-gemini exist, use --agents to sync multiple together (or select a subset).
-  - Tip: for NewAPI/new-api, run: agx create site <name> --template newapi --agents codex,claude (skips generating unsupported endpoints).
-  - After agx use <site>, key commands default to that site (no need for --site).
-  - Machine output: use -o json.
+  - A relay stores only name, base_url, and api_key.
+  - add creates the relay only; agents change only when --bind/--unbind is used.
+  - edit auto-syncs any agent currently bound to this relay after base_url/api_key changes.
+  - --bind and --unbind accept comma-separated agent lists and may be repeated.
+  - In a terminal, agx add prompts for missing values automatically.
+  - In a terminal, agx edit <relay> shows current values and prompts when no edit flags are passed.
+  - Use -o json on add/edit/ls/show/restore/backup ls/doctor/rm for machine-readable output.
 `)
+}
+
+func (r *Root) printVersion() {
+	fmt.Fprintf(r.stdout, "agx %s\n", r.build.Version)
+	fmt.Fprintf(r.stdout, "commit=%s\n", r.build.Commit)
+	fmt.Fprintf(r.stdout, "date=%s\n", r.build.Date)
 }

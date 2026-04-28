@@ -1,0 +1,62 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://agx.dev/schema/show.schema.json",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["relay", "agents", "agent_bindings"],
+  "properties": {
+    "relay": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["name", "base_url", "api_key", "created_at", "updated_at"],
+      "properties": {
+        "name": { "type": "string", "minLength": 1 },
+        "base_url": { "type": "string", "minLength": 1 },
+        "api_key": { "type": "string", "minLength": 1 },
+        "created_at": { "type": "string", "minLength": 1 },
+        "updated_at": { "type": "string", "minLength": 1 }
+      }
+    },
+    "agents": {
+      "type": "array",
+      "items": {
+        "type": "string",
+        "enum": ["codex", "claude", "gemini"]
+      }
+    },
+    "agent_bindings": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["agent", "relay", "status", "config_path"],
+        "properties": {
+          "agent": {
+            "type": "string",
+            "enum": ["codex", "claude", "gemini"]
+          },
+          "relay": {
+            "type": "string",
+            "minLength": 1
+          },
+          "status": {
+            "type": "string",
+            "enum": ["applied"]
+          },
+          "config_path": {
+            "type": "string",
+            "minLength": 1
+          },
+          "last_applied_at": {
+            "type": "string",
+            "minLength": 1
+          },
+          "last_backup_id": {
+            "type": "string",
+            "minLength": 1
+          }
+        }
+      }
+    }
+  }
+}

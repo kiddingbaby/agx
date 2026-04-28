@@ -1,0 +1,13 @@
+# add relay and inspect text output
+exec $AGX_BIN add relay-a --base-url https://relay-a.example/v1 --api-key sk-a
+stdout 'Added relay: relay-a'
+stdout 'base_url=https://relay-a.example/v1'
+stdout 'api_key=sk-a'
+! stderr .
+
+exec $AGX_BIN show relay-a
+stdout 'Relay: relay-a'
+stdout 'base_url=https://relay-a.example/v1'
+stdout 'api_key=sk-a'
+stdout 'agents=-'
+! stderr .
