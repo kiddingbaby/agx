@@ -26,11 +26,14 @@ INVALID_ERR="$TMP_HOME/invalid-args.err"
 
 export HOME="$TMP_HOME"
 
-"$BIN" --help | grep -q "agx add <relay>"
-"$BIN" --help | grep -q "agx edit <relay>"
-"$BIN" --help | grep -q "agx backup ls --agent"
-"$BIN" --help | grep -q "agx doctor"
-"$BIN" doctor | grep -q "Doctor: ok"
+HELP_OUT="$("$BIN" --help)"
+grep -q "agx add <relay>" <<<"$HELP_OUT"
+grep -q "agx edit <relay>" <<<"$HELP_OUT"
+grep -q "agx backup ls --agent" <<<"$HELP_OUT"
+grep -q "agx doctor" <<<"$HELP_OUT"
+
+DOCTOR_OUT="$("$BIN" doctor)"
+grep -q "Doctor: ok" <<<"$DOCTOR_OUT"
 
 mkdir -p "$HOME/.codex" "$HOME/.claude"
 printf 'profile = "before"\n' >"$HOME/.codex/config.toml"
@@ -43,24 +46,38 @@ cat >"$HOME/.claude/settings.json" <<'JSON'
 JSON
 
 "$BIN" add relay-a --base-url https://relay-a.example/v1 --api-key sk-a >/dev/null
-"$BIN" show relay-a | grep -q "agents=-"
-"$BIN" ls | grep -q "agents=-"
-"$BIN" doctor | grep -q "Doctor: ok"
+SHOW_OUT="$("$BIN" show relay-a)"
+grep -q "agents=-" <<<"$SHOW_OUT"
+
+LIST_OUT="$("$BIN" ls)"
+grep -q "agents=-" <<<"$LIST_OUT"
+
+DOCTOR_OUT="$("$BIN" doctor)"
+grep -q "Doctor: ok" <<<"$DOCTOR_OUT"
 grep -q '^profile = "before"$' "$HOME/.codex/config.toml"
 
 BIND_OUT="$("$BIN" edit relay-a --bind codex,claude)"
-printf '%s\n' "$BIND_OUT" | grep -q "Updated relay bindings: relay-a"
-printf '%s\n' "$BIND_OUT" | grep -q "bind claude"
-printf '%s\n' "$BIND_OUT" | grep -q "bind codex"
-"$BIN" show relay-a | grep -q "agents=codex,claude"
-"$BIN" ls | grep -q "agents=codex,claude"
-"$BIN" ls --agent codex | grep -q "Current: relay-a"
-"$BIN" ls --agent codex | grep -q '\* relay-a'
-"$BIN" backup ls --agent codex | grep -q "backup_id=before-codex-sync-"
-"$BIN" backup ls --agent codex | grep -q "restore_mode=restore_file"
+grep -q "Updated relay bindings: relay-a" <<<"$BIND_OUT"
+grep -q "bind claude" <<<"$BIND_OUT"
+grep -q "bind codex" <<<"$BIND_OUT"
+
+SHOW_OUT="$("$BIN" show relay-a)"
+grep -q "agents=codex,claude" <<<"$SHOW_OUT"
+
+LIST_OUT="$("$BIN" ls)"
+grep -q "agents=codex,claude" <<<"$LIST_OUT"
+
+AGENT_LIST_OUT="$("$BIN" ls --agent codex)"
+grep -q "Current: relay-a" <<<"$AGENT_LIST_OUT"
+grep -q '\* relay-a' <<<"$AGENT_LIST_OUT"
+
+BACKUP_OUT="$("$BIN" backup ls --agent codex)"
+grep -q "backup_id=before-codex-sync-" <<<"$BACKUP_OUT"
+grep -q "restore_mode=restore_file" <<<"$BACKUP_OUT"
 
 "$BIN" edit relay-a --base-url https://relay-a-new.example/v1 --api-key sk-rotated >/dev/null
-"$BIN" ls | grep -q "agents=codex,claude"
+LIST_OUT="$("$BIN" ls)"
+grep -q "agents=codex,claude" <<<"$LIST_OUT"
 grep -q 'base_url = "https://relay-a-new.example/v1"' "$HOME/.codex/config.toml"
 grep -q '"ANTHROPIC_BASE_URL": "https://relay-a-new.example/v1"' "$HOME/.claude/settings.json"
 
@@ -71,10 +88,17 @@ set -e
 [ "$rc" -ne 0 ]
 grep -q "relay relay-a is currently bound to codex, claude" "$RM_BOUND_ERR"
 
-"$BIN" edit relay-a --unbind codex | grep -q "unbind codex"
-"$BIN" show relay-a | grep -q "agents=claude"
-"$BIN" restore --agent codex | grep -q "Restored agent: codex"
-"$BIN" backup ls --agent codex | grep -q "Backups for codex:"
+UNBIND_OUT="$("$BIN" edit relay-a --unbind codex)"
+grep -q "unbind codex" <<<"$UNBIND_OUT"
+
+SHOW_OUT="$("$BIN" show relay-a)"
+grep -q "agents=claude" <<<"$SHOW_OUT"
+
+RESTORE_OUT="$("$BIN" restore --agent codex)"
+grep -q "Restored agent: codex" <<<"$RESTORE_OUT"
+
+BACKUP_OUT="$("$BIN" backup ls --agent codex)"
+grep -q "Backups for codex:" <<<"$BACKUP_OUT"
 
 python3 - "$BIN" "$HOME" <<'PY'
 import os
@@ -128,7 +152,7 @@ if "Added relay: relay-paste" not in text:
 PY
 
 JSON_OUT="$("$BIN" show relay-a -o json)"
-echo "$JSON_OUT" | jq -e '.agent_bindings | length >= 1' >/dev/null
+jq -e '.agent_bindings | length >= 1' >/dev/null <<<"$JSON_OUT"
 
 set +e
 "$BIN" add relay-old --base-url https://relay-old.example/v1 --api-key sk-old --agent codex >"$INVALID_OUT" 2>"$INVALID_ERR"
