@@ -17,12 +17,6 @@ vars:
   DIST_DIR: '{{.CACHE_DIR}}/dist'
   COVERPROFILE: '{{.CACHE_DIR}}/coverage.out'
   COVERHTML: '{{.CACHE_DIR}}/coverage.html'
-  VERSION:
-    sh: git describe --tags --always --dirty 2>/dev/null || echo dev
-  COMMIT:
-    sh: git rev-parse --short HEAD 2>/dev/null || echo unknown
-  DATE:
-    sh: date -u +%Y-%m-%dT%H:%M:%SZ
 
 tasks:
   default:
@@ -39,8 +33,7 @@ tasks:
   build:
     desc: Build AGX
     cmds:
-      - mkdir -p "$(dirname '{{.BIN}}')"
-      - mise exec -- go build -ldflags="-s -w -X main.version={{.VERSION}} -X main.commit={{.COMMIT}} -X main.date={{.DATE}}" -o {{.BIN}} ./cmd/agx
+      - mise exec -- bash scripts/build-agx.sh "{{.BIN}}"
 
   install:
     desc: Build and install AGX to ~/.local/bin/agx

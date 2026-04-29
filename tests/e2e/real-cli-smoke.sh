@@ -15,7 +15,7 @@ export GOCACHE="${GOCACHE:-/tmp/agx-go-build}"
 mkdir -p "$GOCACHE"
 mkdir -p "$(dirname "$BIN")"
 
-(cd "$ROOT" && go build -o "$BIN" ./cmd/agx)
+(cd "$ROOT" && bash scripts/build-agx.sh "$BIN")
 
 TMP_DIRS=()
 cleanup() {

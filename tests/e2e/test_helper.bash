@@ -20,7 +20,7 @@ setup_agx_suite() {
   mkdir -p "$(dirname "$BIN")"
   (
     cd "$ROOT"
-    go build -o "$BIN" ./cmd/agx
+    bash scripts/build-agx.sh "$BIN"
   )
 }
 

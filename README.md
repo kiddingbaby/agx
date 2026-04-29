@@ -17,6 +17,9 @@ task build
 task install
 ```
 
+`task build` 只会更新缓存产物，默认是 `~/.cache/agx/bin/agx`；`task install` 才会更新 `~/.local/bin/agx`。  
+`command -v agx` 命中的通常是已安装版本，不一定是刚执行 `task build` 的结果。
+
 日常使用命令、运行时行为和文件路径见 `docs/user-guide.md`。
 
 ## 文档入口

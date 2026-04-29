@@ -10,6 +10,9 @@ task setup
 task build
 ```
 
+`task build` 只更新缓存二进制，默认输出到 `~/.cache/agx/bin/agx`；`task install` 才会覆盖 `~/.local/bin/agx`。  
+所以在 PR 前即使已经 `build` 或跑过测试，`command -v agx` 命中的也仍可能是旧的已安装版本。
+
 ## 目录
 
 - `cmd/agx/`: CLI 入口
