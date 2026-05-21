@@ -66,37 +66,24 @@ untouched. Profiles are stored as plaintext YAML (mode 0600) under
 
 ## Install
 
-### Homebrew (macOS / Linuxbrew)
+One-liner:
 
 ```bash
-brew install kiddingbaby/agx/agx
+curl -fsSL https://raw.githubusercontent.com/kiddingbaby/agx/main/scripts/install.sh | sh
 ```
 
-### Prebuilt binary
+The script picks the right OS / arch, verifies SHA256, and installs agx to `~/.local/bin/agx`. Override with `AGX_INSTALL_DIR=...` or `AGX_VERSION=v0.1.0`.
 
-Download the matching archive from the
-[latest release](https://github.com/kiddingbaby/agx/releases/latest):
+Other paths:
 
-```bash
-VERSION=v0.1.0
-OS=$(uname -s | tr '[:upper:]' '[:lower:]')   # linux / darwin
-ARCH=$(uname -m | sed 's/aarch64/arm64/;s/x86_64/x86_64/')
-curl -L "https://github.com/kiddingbaby/agx/releases/download/${VERSION}/agx_${VERSION#v}_${OS}_${ARCH}.tar.gz" \
-  | tar -xz -C /tmp
-install -m 0755 /tmp/agx ~/.local/bin/agx
-```
+- **Homebrew (macOS / Linuxbrew)**: `brew install kiddingbaby/agx/agx`
+- **`go install`**: `go install github.com/kiddingbaby/agx/cmd/agx@latest`
+- **Manual binary**: grab the `tar.gz` for your platform from [Releases](https://github.com/kiddingbaby/agx/releases/latest)
+- **Build from source**: see [CONTRIBUTING.md](CONTRIBUTING.md)
 
-### `go install`
+Linux / macOS on amd64 / arm64.
 
-```bash
-go install github.com/kiddingbaby/agx/cmd/agx@latest
-```
-
-Linux / macOS on amd64 / arm64. Building from source is covered in
-[CONTRIBUTING.md](CONTRIBUTING.md).
-
-Uninstall: `brew uninstall agx` (or delete the binary); to wipe all
-profiles / contexts: `rm -rf ~/.config/agx`.
+Uninstall: `brew uninstall agx` (or delete the binary); to wipe all profiles / contexts: `rm -rf ~/.config/agx`.
 
 ## Common tasks
 

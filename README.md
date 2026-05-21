@@ -58,32 +58,22 @@ agx run claude
 
 ## Install
 
-### Homebrew（macOS / Linuxbrew）
+一行装好：
 
 ```bash
-brew install kiddingbaby/agx/agx
+curl -fsSL https://raw.githubusercontent.com/kiddingbaby/agx/main/scripts/install.sh | sh
 ```
 
-### 预编译二进制
+脚本自动选 OS / arch、校验 SHA256，把 agx 装到 `~/.local/bin/agx`。可用 `AGX_INSTALL_DIR=...` 或 `AGX_VERSION=v0.1.0` 覆盖。
 
-从 [Releases](https://github.com/kiddingbaby/agx/releases/latest) 下载对应平台的归档：
+挑剔的方式：
 
-```bash
-VERSION=v0.1.0
-OS=$(uname -s | tr '[:upper:]' '[:lower:]')   # linux / darwin
-ARCH=$(uname -m | sed 's/aarch64/arm64/;s/x86_64/x86_64/')
-curl -L "https://github.com/kiddingbaby/agx/releases/download/${VERSION}/agx_${VERSION#v}_${OS}_${ARCH}.tar.gz" \
-  | tar -xz -C /tmp
-install -m 0755 /tmp/agx ~/.local/bin/agx
-```
+- **Homebrew（macOS / Linuxbrew）**：`brew install kiddingbaby/agx/agx`
+- **`go install`**：`go install github.com/kiddingbaby/agx/cmd/agx@latest`
+- **手动下二进制**：从 [Releases](https://github.com/kiddingbaby/agx/releases/latest) 拿对应平台的 `tar.gz`
+- **从源码构建**：见 [CONTRIBUTING.md](CONTRIBUTING.md)
 
-### `go install`
-
-```bash
-go install github.com/kiddingbaby/agx/cmd/agx@latest
-```
-
-支持 Linux / macOS、amd64 / arm64。从源码构建见 [CONTRIBUTING.md](CONTRIBUTING.md)。
+支持 Linux / macOS、amd64 / arm64。
 
 卸载：`brew uninstall agx`（或直接删二进制）；清空所有 profile / 上下文：`rm -rf ~/.config/agx`。
 
