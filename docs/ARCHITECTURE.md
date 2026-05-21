@@ -83,7 +83,7 @@ Per-agent syncers wrap one config format each:
 - **codexconfig** — TOML; maintains an "AGX managed" block plus root `profile = "<name>"`
 - **claudeconfig** — JSON `settings.json`; writes `apiKeyHelper` and `env.ANTHROPIC_BASE_URL`
 - **geminiconfig** — dotenv; writes `GOOGLE_GEMINI_BASE_URL` and `GEMINI_API_KEY`
-- **opencodeconfig** — JSON `config.json`; manages a provider plus `model`
+- **opencodeconfig** — JSON `config.json`; for every managed profile writes three providers (`agx-<name>-openai-compatible`, `-anthropic`, `-gemini`) sharing the same base_url + api_key; `settings.model` is chosen by a heuristic over `profile.model`. Runtime protocol switching is delegated to opencode's own `/provider` command
 
 Cross-cutting: `profilefile/` persists YAML under `~/.config/agx/profiles/`;
 `lockfile/` provides flock; `opjournal/` records in-flight ops for `agx doctor`.

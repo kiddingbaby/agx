@@ -39,6 +39,49 @@ func OpenCodeProviderID(name string) string {
 	return "agx-" + name
 }
 
+// OpenCodeProviderIDFor returns the per-family provider ID for a profile, e.g.
+// "agx-newapi-openai-compatible". The agx-managed opencode syncer writes one
+// provider per family (openai-compatible / anthropic / gemini) so users can
+// switch protocol via opencode's own /provider command without touching agx.
+func OpenCodeProviderIDFor(name string, family OpenCodeProviderFamily) string {
+	prefix := OpenCodeProviderID(name)
+	if prefix == "" || family == "" {
+		return ""
+	}
+	return prefix + "-" + string(family)
+}
+
+// OpenCodeManagedFamilies lists the provider families agx writes for every
+// managed opencode profile. The order matches the heuristic-default preference
+// when no model name hints anthropic / gemini.
+func OpenCodeManagedFamilies() []OpenCodeProviderFamily {
+	return []OpenCodeProviderFamily{
+		OpenCodeProviderFamilyOpenAICompatible,
+		OpenCodeProviderFamilyAnthropic,
+		OpenCodeProviderFamilyGemini,
+	}
+}
+
+// OpenCodeDefaultFamilyForModel picks which family's provider gets
+// settings.model by default, based on the model name. Empty / unknown maps to
+// openai-compatible. Users can always override inside opencode.
+func OpenCodeDefaultFamilyForModel(modelID string) OpenCodeProviderFamily {
+	lower := strings.ToLower(strings.TrimSpace(modelID))
+	if lower == "" {
+		return OpenCodeProviderFamilyOpenAICompatible
+	}
+	switch {
+	case strings.HasPrefix(lower, "claude"),
+		strings.HasPrefix(lower, "opus"),
+		strings.HasPrefix(lower, "sonnet"),
+		strings.HasPrefix(lower, "haiku"):
+		return OpenCodeProviderFamilyAnthropic
+	case strings.HasPrefix(lower, "gemini"):
+		return OpenCodeProviderFamilyGemini
+	}
+	return OpenCodeProviderFamilyOpenAICompatible
+}
+
 func ValidateOpenCodeModelID(modelID string) error {
 	modelID = strings.TrimSpace(modelID)
 	if modelID == "" {

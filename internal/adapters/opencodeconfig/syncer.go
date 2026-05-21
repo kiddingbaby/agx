@@ -33,28 +33,31 @@ func (s *Syncer) Sync(profile domainprofile.Profile, options ports.OpenCodeSyncO
 	if err := domainprofile.ValidateOpenCodeModelID(options.ModelID); err != nil {
 		return nil, err
 	}
-	family := options.ProviderFamily
-	if !family.Valid() || family == "" {
-		return nil, fmt.Errorf("opencode sync requires a provider family")
-	}
 
 	settings, _, err := s.readSettings()
 	if err != nil {
 		return nil, err
 	}
 
-	providerID := domainprofile.OpenCodeProviderID(profile.Name)
-	if providerID == "" {
+	if domainprofile.OpenCodeProviderID(profile.Name) == "" {
 		return nil, fmt.Errorf("opencode sync requires a valid profile name")
 	}
 	settings["$schema"] = schemaURL
 	providers := readObject(settings, "provider")
-	providers[providerID] = buildProviderConfig(profile, options)
+	defaultFamily := domainprofile.OpenCodeDefaultFamilyForModel(options.ModelID)
+	var defaultProviderID string
+	for _, family := range domainprofile.OpenCodeManagedFamilies() {
+		providerID := domainprofile.OpenCodeProviderIDFor(profile.Name, family)
+		providers[providerID] = buildProviderConfig(profile, family, options)
+		if family == defaultFamily {
+			defaultProviderID = providerID
+		}
+	}
 	settings["provider"] = providers
 	if options.SetAsCurrent {
-		settings["model"] = providerID + "/" + options.ModelID
+		settings["model"] = defaultProviderID + "/" + options.ModelID
 	} else if currentModel, ok := settings["model"].(string); ok && strings.TrimSpace(currentModel) == "" {
-		settings["model"] = providerID + "/" + options.ModelID
+		settings["model"] = defaultProviderID + "/" + options.ModelID
 	}
 
 	if err := fileutil.AtomicWriteJSON(s.configPath, settings, 0600); err != nil {
@@ -62,7 +65,7 @@ func (s *Syncer) Sync(profile domainprofile.Profile, options ports.OpenCodeSyncO
 	}
 
 	return &ports.OpenCodeSyncResult{
-		ProviderID: providerID,
+		ProviderID: defaultProviderID,
 		ModelID:    options.ModelID,
 		ConfigPath: s.configPath,
 	}, nil
@@ -152,8 +155,8 @@ func (s *Syncer) ClearDefaultModel() (string, error) {
 }
 
 func (s *Syncer) RemoveProfile(name string) (string, error) {
-	providerID := domainprofile.OpenCodeProviderID(name)
-	if strings.TrimSpace(providerID) == "" {
+	prefix := domainprofile.OpenCodeProviderID(name)
+	if strings.TrimSpace(prefix) == "" {
 		return s.configPath, nil
 	}
 
@@ -166,15 +169,23 @@ func (s *Syncer) RemoveProfile(name string) (string, error) {
 	}
 
 	providers := readObject(settings, "provider")
-	delete(providers, providerID)
+	for id := range providers {
+		if id == prefix || strings.HasPrefix(id, prefix+"-") {
+			delete(providers, id)
+		}
+	}
 	if len(providers) == 0 {
 		delete(settings, "provider")
 	} else {
 		settings["provider"] = providers
 	}
 
-	if current, _ := settings["model"].(string); strings.HasPrefix(current, providerID+"/") {
-		delete(settings, "model")
+	if current, _ := settings["model"].(string); current != "" {
+		// Per-family providers store the model as "agx-<name>-<family>/<model>".
+		// Legacy single-provider format was "agx-<name>/<model>".
+		if strings.HasPrefix(current, prefix+"/") || strings.HasPrefix(current, prefix+"-") {
+			delete(settings, "model")
+		}
 	}
 	if isEmptyManagedConfig(settings) {
 		if err := os.Remove(s.configPath); err != nil && !os.IsNotExist(err) {
@@ -330,11 +341,12 @@ func readObject(settings map[string]any, key string) map[string]any {
 	return map[string]any{}
 }
 
-func buildProviderConfig(profile domainprofile.Profile, options ports.OpenCodeSyncOptions) map[string]any {
+func buildProviderConfig(profile domainprofile.Profile, family domainprofile.OpenCodeProviderFamily, options ports.OpenCodeSyncOptions) map[string]any {
 	providerName := strings.TrimSpace(options.ProviderName)
 	if providerName == "" {
 		providerName = profile.Name
 	}
+	providerName = fmt.Sprintf("%s (%s)", providerName, family)
 	modelName := strings.TrimSpace(options.ModelName)
 	if modelName == "" {
 		modelName = options.ModelID
@@ -343,7 +355,7 @@ func buildProviderConfig(profile domainprofile.Profile, options ports.OpenCodeSy
 	config := map[string]any{
 		"name": providerName,
 		"options": map[string]any{
-			"baseURL": providerBaseURL(options.ProviderFamily, profile.BaseURL),
+			"baseURL": providerBaseURL(family, profile.BaseURL),
 			"apiKey":  profile.APIKey,
 		},
 		"models": map[string]any{
@@ -352,7 +364,7 @@ func buildProviderConfig(profile domainprofile.Profile, options ports.OpenCodeSy
 			},
 		},
 	}
-	if npm := providerNPM(options.ProviderFamily); npm != "" {
+	if npm := providerNPM(family); npm != "" {
 		config["npm"] = npm
 	}
 	return config

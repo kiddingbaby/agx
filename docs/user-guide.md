@@ -70,6 +70,20 @@ agx restore <agent>
 - `agx backup <agent>` 给当前 target 拍 context 快照，仅支持 `codex` / `claude` / `gemini`（`opencode` 无 per-target context）
 - `agx restore <agent>` 默认恢复当前 target 的最近一次 snapshot
 
+## OpenCode 多 provider
+
+`agx run opencode` 启动前 sync 会写 3 个 provider 到 opencode `config.json`：
+
+| Provider ID | npm | 用途 |
+| --- | --- | --- |
+| `agx-<profile>-openai-compatible` | `@ai-sdk/openai-compatible` | OpenAI Chat Completions（gpt / deepseek / kimi / 国模） |
+| `agx-<profile>-anthropic` | `@ai-sdk/anthropic` | Anthropic Messages（claude / opus / sonnet / haiku） |
+| `agx-<profile>-gemini` | `@ai-sdk/google` | Google Gemini |
+
+3 个 provider 共用 `base_url` + `api_key`。`settings.model` 默认按 profile.model 名启发选 default provider（`claude*`/`opus*`/`sonnet*`/`haiku*` → anthropic；`gemini*` → gemini；其他 → openai-compatible），用户在 opencode 内 `/provider` 和 `/model` 可以随时切。
+
+适配场景：NewAPI / Sub2Api / OneAPI 这类一份凭据通吃多协议的中转——直接 `agx run opencode <profile>`，剩下的协议切换由 opencode 自身管。
+
 ## 接入边界
 
 agx 是中转聚合器，仅处理 OpenAI 兼容（`base_url` + `api_key`）接入：

@@ -18,33 +18,75 @@ func TestSyncWritesManagedProviderAndCurrentModel(t *testing.T) {
 	syncer := NewSyncer(configPath, filepath.Join(dir, "backups"))
 
 	_, err := syncer.Sync(profile("relay-a", "https://relay.example", "sk-a"), ports.OpenCodeSyncOptions{
-		ProviderFamily: domainprofile.OpenCodeProviderFamilyOpenAICompatible,
-		ModelID:        "gpt-4o",
-		ModelName:      "GPT-4o",
-		SetAsCurrent:   true,
+		ModelID:      "gpt-4o",
+		ModelName:    "GPT-4o",
+		SetAsCurrent: true,
 	})
 	if err != nil {
 		t.Fatalf("Sync() error = %v", err)
 	}
 
 	settings := readJSONConfig(t, configPath)
-	if got := settings["model"]; got != "agx-relay-a/gpt-4o" {
-		t.Fatalf("model = %v, want agx-relay-a/gpt-4o", got)
+	if got := settings["model"]; got != "agx-relay-a-openai-compatible/gpt-4o" {
+		t.Fatalf("model = %v, want agx-relay-a-openai-compatible/gpt-4o (default heuristic)", got)
 	}
-	provider := settings["provider"].(map[string]any)["agx-relay-a"].(map[string]any)
-	if got := provider["npm"]; got != "@ai-sdk/openai-compatible" {
-		t.Fatalf("provider npm = %v, want @ai-sdk/openai-compatible", got)
+	providers := settings["provider"].(map[string]any)
+	for _, suffix := range []string{"openai-compatible", "anthropic", "gemini"} {
+		id := "agx-relay-a-" + suffix
+		if _, ok := providers[id].(map[string]any); !ok {
+			t.Fatalf("provider %q missing in %+v", id, providers)
+		}
 	}
-	options := provider["options"].(map[string]any)
+	openaiProvider := providers["agx-relay-a-openai-compatible"].(map[string]any)
+	if got := openaiProvider["npm"]; got != "@ai-sdk/openai-compatible" {
+		t.Fatalf("openai npm = %v, want @ai-sdk/openai-compatible", got)
+	}
+	options := openaiProvider["options"].(map[string]any)
 	if got := options["baseURL"]; got != "https://relay.example/v1" {
-		t.Fatalf("baseURL = %v, want https://relay.example/v1", got)
+		t.Fatalf("openai baseURL = %v, want https://relay.example/v1", got)
 	}
 	if got := options["apiKey"]; got != "sk-a" {
 		t.Fatalf("apiKey = %v, want sk-a", got)
 	}
-	model := provider["models"].(map[string]any)["gpt-4o"].(map[string]any)
+	model := openaiProvider["models"].(map[string]any)["gpt-4o"].(map[string]any)
 	if got := model["name"]; got != "GPT-4o" {
 		t.Fatalf("model display name = %v, want GPT-4o", got)
+	}
+	anthropicProvider := providers["agx-relay-a-anthropic"].(map[string]any)
+	if got := anthropicProvider["npm"]; got != "@ai-sdk/anthropic" {
+		t.Fatalf("anthropic npm = %v, want @ai-sdk/anthropic", got)
+	}
+	geminiProvider := providers["agx-relay-a-gemini"].(map[string]any)
+	if got := geminiProvider["npm"]; got != "@ai-sdk/google" {
+		t.Fatalf("gemini npm = %v, want @ai-sdk/google", got)
+	}
+}
+
+func TestSyncDefaultProviderFollowsModelHeuristic(t *testing.T) {
+	dir := t.TempDir()
+	configPath := filepath.Join(dir, "opencode.json")
+	syncer := NewSyncer(configPath, filepath.Join(dir, "backups"))
+
+	if _, err := syncer.Sync(profile("relay", "https://relay.example", "sk"), ports.OpenCodeSyncOptions{
+		ModelID:      "claude-sonnet-4-5",
+		SetAsCurrent: true,
+	}); err != nil {
+		t.Fatalf("Sync(claude) error = %v", err)
+	}
+	settings := readJSONConfig(t, configPath)
+	if got := settings["model"]; got != "agx-relay-anthropic/claude-sonnet-4-5" {
+		t.Fatalf("model = %v, want agx-relay-anthropic/claude-sonnet-4-5", got)
+	}
+
+	if _, err := syncer.Sync(profile("relay", "https://relay.example", "sk"), ports.OpenCodeSyncOptions{
+		ModelID:      "gemini-2.5-pro",
+		SetAsCurrent: true,
+	}); err != nil {
+		t.Fatalf("Sync(gemini) error = %v", err)
+	}
+	settings = readJSONConfig(t, configPath)
+	if got := settings["model"]; got != "agx-relay-gemini/gemini-2.5-pro" {
+		t.Fatalf("model = %v, want agx-relay-gemini/gemini-2.5-pro", got)
 	}
 }
 
@@ -54,27 +96,29 @@ func TestSyncCanAddNonCurrentCustomFamilyProvider(t *testing.T) {
 	syncer := NewSyncer(configPath, filepath.Join(dir, "backups"))
 
 	if _, err := syncer.Sync(profile("relay-a", "https://relay-a.example/v1", "sk-a"), ports.OpenCodeSyncOptions{
-		ProviderFamily: domainprofile.OpenCodeProviderFamilyOpenAICompatible,
-		ModelID:        "model-a",
-		SetAsCurrent:   true,
+		ModelID:      "model-a",
+		SetAsCurrent: true,
 	}); err != nil {
 		t.Fatalf("Sync(current) error = %v", err)
 	}
 	if _, err := syncer.Sync(profile("relay-b", "https://relay-b.example/v1", "sk-b"), ports.OpenCodeSyncOptions{
-		ProviderFamily: domainprofile.OpenCodeProviderFamilyAnthropic,
-		ModelID:        "claude-sonnet-4-5",
-		SetAsCurrent:   false,
+		ModelID:      "claude-sonnet-4-5",
+		SetAsCurrent: false,
 	}); err != nil {
 		t.Fatalf("Sync(non-current) error = %v", err)
 	}
 
 	settings := readJSONConfig(t, configPath)
-	if got := settings["model"]; got != "agx-relay-a/model-a" {
-		t.Fatalf("model changed to %v, want agx-relay-a/model-a", got)
+	if got := settings["model"]; got != "agx-relay-a-openai-compatible/model-a" {
+		t.Fatalf("model changed to %v, want agx-relay-a-openai-compatible/model-a", got)
 	}
-	provider := settings["provider"].(map[string]any)["agx-relay-b"].(map[string]any)
-	if got := provider["npm"]; got != "@ai-sdk/anthropic" {
-		t.Fatalf("provider npm = %v, want @ai-sdk/anthropic", got)
+	providers := settings["provider"].(map[string]any)
+	bProvider := providers["agx-relay-b-anthropic"].(map[string]any)
+	if got := bProvider["npm"]; got != "@ai-sdk/anthropic" {
+		t.Fatalf("relay-b anthropic npm = %v, want @ai-sdk/anthropic", got)
+	}
+	if _, ok := providers["agx-relay-b-openai-compatible"].(map[string]any); !ok {
+		t.Fatalf("relay-b openai provider missing: %+v", providers)
 	}
 }
 
@@ -84,9 +128,8 @@ func TestRemoveProfileClearsMatchingTopLevelModel(t *testing.T) {
 	syncer := NewSyncer(configPath, filepath.Join(dir, "backups"))
 
 	if _, err := syncer.Sync(profile("relay-a", "https://relay-a.example/v1", "sk-a"), ports.OpenCodeSyncOptions{
-		ProviderFamily: domainprofile.OpenCodeProviderFamilyOpenAICompatible,
-		ModelID:        "model-a",
-		SetAsCurrent:   true,
+		ModelID:      "model-a",
+		SetAsCurrent: true,
 	}); err != nil {
 		t.Fatalf("Sync() error = %v", err)
 	}
@@ -259,16 +302,8 @@ func TestSyncerErrorAndCleanupBranches(t *testing.T) {
 	configPath := filepath.Join(dir, "opencode.json")
 	syncer := NewSyncer(configPath, filepath.Join(dir, "backups"))
 
-	if _, err := syncer.Sync(profile("relay-a", "https://relay.example", "sk-a"), ports.OpenCodeSyncOptions{
-		ProviderFamily: domainprofile.OpenCodeProviderFamilyOpenAICompatible,
-	}); err == nil {
+	if _, err := syncer.Sync(profile("relay-a", "https://relay.example", "sk-a"), ports.OpenCodeSyncOptions{}); err == nil {
 		t.Fatal("Sync(missing model) unexpectedly succeeded")
-	}
-	if _, err := syncer.Sync(profile("relay-a", "https://relay.example", "sk-a"), ports.OpenCodeSyncOptions{
-		ProviderFamily: domainprofile.OpenCodeProviderFamily("bad"),
-		ModelID:        "gpt-4o",
-	}); err == nil {
-		t.Fatal("Sync(invalid family) unexpectedly succeeded")
 	}
 
 	snapshot, err := syncer.Snapshot()

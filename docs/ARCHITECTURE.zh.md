@@ -80,7 +80,7 @@ tests/
 - **codexconfig** —— TOML；维护 "AGX managed" 块与根级 `profile = "<name>"`
 - **claudeconfig** —— JSON `settings.json`；写 `apiKeyHelper` 与 `env.ANTHROPIC_BASE_URL`
 - **geminiconfig** —— dotenv；写 `GOOGLE_GEMINI_BASE_URL` 与 `GEMINI_API_KEY`
-- **opencodeconfig** —— JSON `config.json`；维护 provider 与 `model`
+- **opencodeconfig** —— JSON `config.json`；对每个 managed profile 写 3 个 provider（`agx-<name>-openai-compatible` / `-anthropic` / `-gemini`），共用同一份 base_url + api_key；`settings.model` 按 profile.model 名启发选 default provider。运行时切换协议交给 opencode 自身的 `/provider` 命令
 
 横切设施：`profilefile/` 把 Profile + State 持久成 `~/.config/agx/profiles/`
 下的 YAML；`lockfile/` 提供 flock；`opjournal/` 让 `agx doctor` 能识别崩溃残留。

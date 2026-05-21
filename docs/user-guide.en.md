@@ -73,6 +73,27 @@ agx restore <agent>
   `codex` / `claude` / `gemini`; `opencode` has no per-target context)
 - `agx restore <agent>` restores the latest snapshot for the current target
 
+## OpenCode multi-provider
+
+`agx run opencode` syncs three providers into opencode `config.json` before
+launch:
+
+| Provider ID | npm | Use case |
+| --- | --- | --- |
+| `agx-<profile>-openai-compatible` | `@ai-sdk/openai-compatible` | OpenAI Chat Completions (gpt / deepseek / kimi / 国模) |
+| `agx-<profile>-anthropic` | `@ai-sdk/anthropic` | Anthropic Messages (claude / opus / sonnet / haiku) |
+| `agx-<profile>-gemini` | `@ai-sdk/google` | Google Gemini |
+
+All three share the same `base_url` + `api_key`. `settings.model` defaults via a
+heuristic over `profile.model` (`claude*`/`opus*`/`sonnet*`/`haiku*` →
+anthropic; `gemini*` → gemini; otherwise openai-compatible). Users can switch
+providers and models inside opencode with `/provider` and `/model` without
+touching agx.
+
+This makes a single profile work end-to-end against NewAPI / OneAPI / similar
+all-in-one relays — agx only sets up the entry points; protocol switching lives
+in opencode itself.
+
 ## Integration boundary
 
 agx is a relay aggregator and only handles OpenAI-compatible (`base_url` + `api_key`) endpoints:

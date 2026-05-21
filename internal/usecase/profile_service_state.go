@@ -506,6 +506,16 @@ func openCodeProfileNameFromProviderID(providerID string) string {
 		return ""
 	}
 	name := strings.TrimPrefix(providerID, "agx-")
+	// agx writes one provider per family with id `agx-<name>-<family>`. Trim
+	// the family suffix so doctor / state inference still recovers the
+	// underlying profile name. Legacy single-provider format (`agx-<name>`)
+	// has no suffix and falls through unchanged.
+	for _, family := range domainprofile.OpenCodeManagedFamilies() {
+		if trimmed, ok := strings.CutSuffix(name, "-"+string(family)); ok {
+			name = trimmed
+			break
+		}
+	}
 	return domainprofile.NormalizeProfileName(name)
 }
 
