@@ -12,13 +12,15 @@
 </p>
 
 > One relay profile (`base_url` + `api_key`) drives `codex`, `claude`,
-> `gemini`, and `opencode`. Each agent runs in an isolated managed context.
+> `gemini`, and `opencode`. Each agent runs in its own isolated context.
 
 中文：[README.md](README.md) · User guide: [docs/user-guide.en.md](docs/user-guide.en.md)
 
 ---
 
 ## Why agx
+
+> "Relay" here means any OpenAI-compatible (`base_url` + `api_key`) endpoint — a self-hosted gateway, a third-party proxy, LiteLLM, etc.
 
 Switching relays across multiple AI coding agents normally means:
 
@@ -59,7 +61,8 @@ agx run claude
 Per-agent config materializes under `~/.config/agx/contexts/<agent>/<name>/`
 and is injected when the native CLI is launched. Your host-level
 `~/.codex` / `~/.claude` / `~/.gemini` / `~/.config/opencode` are left
-untouched.
+untouched. Profiles are stored as plaintext YAML (mode 0600) under
+`~/.config/agx/profiles/`; no OS keychain integration yet.
 
 ## Install
 
@@ -92,7 +95,17 @@ go install github.com/kiddingbaby/agx/cmd/agx@latest
 Linux / macOS on amd64 / arm64. Building from source is covered in
 [CONTRIBUTING.md](CONTRIBUTING.md).
 
+Uninstall: `brew uninstall agx` (or delete the binary); to wipe all
+profiles / contexts: `rm -rf ~/.config/agx`.
+
 ## Common tasks
+
+See what's currently set:
+
+```bash
+agx ls         # list every profile; * marks the current one
+agx current    # print just the current profile name
+```
 
 Switch between relays:
 
@@ -107,14 +120,14 @@ agx use anthropic-relay && agx run claude
 Use a relay just once without changing the default:
 
 ```bash
-agx run codex openai-direct -- --help     # positional: this launch only
+agx run codex openai-direct -- --help     # use openai-direct just this launch; args after -- are forwarded to codex
 AGX_PROFILE=openai-direct agx run codex   # this shell; pairs with direnv for per-directory pinning
 ```
 
 Snapshot before a risky edit, roll back if needed:
 
 ```bash
-agx backup codex                          # explicit snapshot of the current target
+agx backup codex                          # snapshot codex's current profile
 agx edit work --api-key sk-rotated
 agx run codex
 agx restore codex                         # back to the latest snapshot

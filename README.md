@@ -11,13 +11,15 @@
   <img src="docs/assets/demo.svg" alt="agx demo：登记一份中转 profile，切换，启动 codex / claude" width="780">
 </p>
 
-> 一份中转 profile（`base_url` + `api_key`），同步给 `codex` / `claude` / `gemini` / `opencode`，每个 agent 跑在隔离的受管上下文里。
+> 一份中转 profile（`base_url` + `api_key`），同步给 `codex` / `claude` / `gemini` / `opencode`，每个 agent 跑在自己的隔离上下文里。
 
 English: [README.en.md](README.en.md) · 用户指南：[docs/user-guide.md](docs/user-guide.md)
 
 ---
 
 ## Why agx
+
+> 这里说的"中转"= 任意 OpenAI 兼容（`base_url` + `api_key`）的端点：自建网关、第三方代理、LiteLLM 等都算。
 
 在多个 AI coding agent 之间切换中转时，你通常要：
 
@@ -52,7 +54,7 @@ agx run codex      # 任意 agent 都自动用这份中转
 agx run claude
 ```
 
-每个 agent 的受管配置落在 `~/.config/agx/contexts/<agent>/<name>/`，宿主机的 `~/.codex` / `~/.claude` / `~/.gemini` / `~/.config/opencode` 不被改动。
+每个 agent 的配置落在 `~/.config/agx/contexts/<agent>/<name>/`，宿主机的 `~/.codex` / `~/.claude` / `~/.gemini` / `~/.config/opencode` 不被改动。Profile 以 0600 权限的明文 YAML 存在 `~/.config/agx/profiles/`，目前没接 OS keychain。
 
 ## Install
 
@@ -83,7 +85,16 @@ go install github.com/kiddingbaby/agx/cmd/agx@latest
 
 支持 Linux / macOS、amd64 / arm64。从源码构建见 [CONTRIBUTING.md](CONTRIBUTING.md)。
 
+卸载：`brew uninstall agx`（或直接删二进制）；清空所有 profile / 上下文：`rm -rf ~/.config/agx`。
+
 ## 常用场景
+
+查看当前状态：
+
+```bash
+agx ls         # 列出所有 profile，* 标记当前
+agx current    # 只输出当前 profile 名称
+```
 
 切换不同中转：
 
@@ -98,14 +109,14 @@ agx use anthropic-relay && agx run claude
 临时挂一个中转，不动默认：
 
 ```bash
-agx run codex openai-direct -- --help     # 本次启动有效
+agx run codex openai-direct -- --help     # 本次启动用 openai-direct；-- 之后的参数转发给 codex
 AGX_PROFILE=openai-direct agx run codex   # 本 shell；配合 direnv 可按目录 pin
 ```
 
 危险编辑前留底，出错回滚：
 
 ```bash
-agx backup codex                          # 显式快照当前 target
+agx backup codex                          # 给 codex 当前的 profile 拍快照
 agx edit work --api-key sk-rotated
 agx run codex
 agx restore codex                         # 不对的话回到最近一次 snapshot
