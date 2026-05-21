@@ -1,0 +1,31 @@
+# syntax=docker/dockerfile:1.7
+
+ARG GO_IMAGE=golang:1.24.9-bookworm
+FROM ${GO_IMAGE} AS verify
+
+WORKDIR /src
+
+ENV PATH=/go/bin:${PATH}
+ENV GOPROXY=https://proxy.golang.org,direct
+ENV GOTOOLCHAIN=local
+ENV GOCACHE=/tmp/agx-go-build
+
+RUN apt-get update \
+  && apt-get install -y --no-install-recommends ca-certificates \
+  && rm -rf /var/lib/apt/lists/*
+
+COPY . .
+
+RUN --mount=type=cache,target=/root/.cache/go-build \
+  --mount=type=cache,target=/go/pkg/mod \
+  set -eu; \
+  VERSION="$(git describe --tags --always --dirty 2>/dev/null || echo dev)"; \
+  COMMIT="$(git rev-parse --short HEAD 2>/dev/null || echo unknown)"; \
+  if [ "$VERSION" = "dev" ] || [ "$COMMIT" = "unknown" ]; then DATE="unknown"; else DATE="$(date -u +%Y-%m-%dT%H:%M:%SZ)"; fi; \
+  go build -buildvcs=false \
+    -ldflags="-s -w -X main.version=$VERSION -X main.commit=$COMMIT -X main.date=$DATE" \
+    -o /usr/local/bin/agx ./cmd/agx; \
+  go test ./...; \
+  go test -tags=interactive ./tests/interactive/...; \
+  bash tests/e2e/cli-smoke.sh /usr/local/bin/agx; \
+  AGX_BIN=/usr/local/bin/agx bash tests/e2e/run-bats.sh

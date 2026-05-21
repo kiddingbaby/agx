@@ -1,0 +1,153 @@
+version: '3'
+
+env:
+  GOCACHE: '{{default "/tmp/agx-go-build" .GOCACHE}}'
+
+vars:
+  CACHE_DIR:
+    sh: |
+      if [ -n "${AGX_CACHE_DIR:-}" ]; then
+        printf '%s\n' "$AGX_CACHE_DIR"
+      elif [ -n "${XDG_CACHE_HOME:-}" ]; then
+        printf '%s/agx\n' "$XDG_CACHE_HOME"
+      else
+        printf '%s/.cache/agx\n' "$HOME"
+      fi
+  BINDIR:
+    sh: |
+      if [ -n "${BINDIR:-}" ]; then
+        printf '%s\n' "$BINDIR"
+      else
+        printf '%s/.local/bin\n' "$HOME"
+      fi
+  BIN: '{{.CACHE_DIR}}/bin/agx'
+  DIST_DIR: '{{.CACHE_DIR}}/dist'
+  DOCKER_CONFIG_DIR:
+    sh: |
+      if [ -n "${DOCKER_CONFIG_DIR:-}" ]; then
+        printf '%s\n' "$DOCKER_CONFIG_DIR"
+      elif [ -n "${DOCKER_CONFIG:-}" ]; then
+        printf '%s\n' "$DOCKER_CONFIG"
+      elif [ -d "$HOME/.docker" ] && [ -w "$HOME/.docker" ]; then
+        printf '%s/.docker\n' "$HOME"
+      elif [ ! -e "$HOME/.docker" ] && mkdir -p "$HOME/.docker" 2>/dev/null; then
+        printf '%s/.docker\n' "$HOME"
+      else
+        printf '%s/docker-config\n' '{{.CACHE_DIR}}'
+      fi
+
+tasks:
+  default:
+    cmds:
+      - task: help
+
+  help:
+    desc: Show the public task entrypoints
+    silent: true
+    cmds:
+      - task --list
+
+  dev:setup:
+    desc: Prepare the local toolchain with mise
+    cmds:
+      - mise trust -y mise.toml
+      - mise install
+
+  build:
+    desc: Build the binary
+    cmds:
+      - cmd: |
+          set -eu
+          OUT="{{.BIN}}"
+          mkdir -p "$(dirname "$OUT")"
+          VERSION="$(git describe --tags --always --dirty 2>/dev/null || echo dev)"
+          COMMIT="$(git rev-parse --short HEAD 2>/dev/null || echo unknown)"
+          if [ "$VERSION" = "dev" ] || [ "$COMMIT" = "unknown" ]; then
+            DATE="unknown"
+          else
+            DATE="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+          fi
+          mise exec -- go build -buildvcs=false \
+            -ldflags="-s -w -X main.version=$VERSION -X main.commit=$COMMIT -X main.date=$DATE" \
+            -o "$OUT" ./cmd/agx
+
+  install:
+    desc: Install the binary to the local bin directory
+    deps: [build]
+    cmds:
+      - mkdir -p "{{.BINDIR}}"
+      - install -m 755 {{.BIN}} "{{.BINDIR}}/agx"
+
+  clean:
+    desc: Remove build and runtime artifacts
+    cmds:
+      - rm -rf "{{.CACHE_DIR}}"
+
+  test:
+    desc: Run go test on all packages (lightweight dev loop)
+    cmds:
+      - mise exec -- go test ./...
+
+  lint:
+    desc: Run golangci-lint on all packages
+    cmds:
+      - mise exec -- golangci-lint run ./...
+
+  test:interactive:
+    desc: Run interactive PTY tests
+    deps: [build]
+    cmds:
+      - mise exec -- go test -tags=interactive ./tests/interactive/...
+
+  test:smoke:
+    desc: Run the public-path CLI smoke against the built binary
+    deps: [build]
+    cmds:
+      - mise exec -- bash tests/e2e/cli-smoke.sh "{{.BIN}}"
+
+  test:bats:
+    desc: Run bats e2e suite (falls back to repo-local runner if bats is missing)
+    deps: [build]
+    cmds:
+      - AGX_BIN="{{.BIN}}" mise exec -- bash tests/e2e/run-bats.sh
+
+  bench:
+    desc: CLI invocation timing budget guard (avg over N runs per command)
+    deps: [build]
+    cmds:
+      - AGX_BIN="{{.BIN}}" bash scripts/bench.sh
+
+  docs:man:
+    desc: Generate man pages into docs/man/
+    deps: [build]
+    cmds:
+      - rm -rf docs/man
+      - mkdir -p docs/man
+      - "{{.BIN}} __gen-man docs/man"
+
+  verify:
+    desc: Run the default local verification suite (build + lint + unit + interactive + smoke + bats)
+    cmds:
+      - task: build
+      - task: lint
+      - task: test
+      - task: test:interactive
+      - task: test:smoke
+      - task: test:bats
+
+  verify:docker:
+    desc: Run the default Docker portable verification target
+    cmds:
+      - mkdir -p "{{.DOCKER_CONFIG_DIR}}"
+      - DOCKER_CONFIG="{{.DOCKER_CONFIG_DIR}}" docker buildx bake docker-check --progress=plain
+
+  verify:agents:
+    desc: Run real local agent CLI smoke checks when available
+    deps: [build]
+    cmds:
+      - mise exec -- bash tests/e2e/real-cli-smoke.sh "{{.BIN}}"
+
+  release:check:
+    desc: Validate the GoReleaser config
+    cmds:
+      - mise exec -- goreleaser check

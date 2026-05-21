@@ -1,0 +1,27 @@
+# Binary
+/agx
+
+# IDE
+.idea/
+.vscode/
+
+# Local tool state
+.claude/
+.gemini/
+.codex
+.codex/
+.serena/
+.tmp/
+.workflow/
+
+# OS
+.DS_Store
+
+# Local notes
+DESIGN.md
+SPECS.md
+TODO.md
+
+# Local overrides
+mise.local.toml
+.mise.local.toml

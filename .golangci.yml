@@ -1,0 +1,84 @@
+version: "2"
+
+run:
+  timeout: 5m
+
+linters:
+  default: none
+  enable:
+    - errcheck
+    - govet
+    - staticcheck
+    - ineffassign
+    - unused
+    - gosec
+    - revive
+    - gocyclo
+    - dupl
+    - misspell
+    - unconvert
+  settings:
+    # gocyclo: ratcheted from 40 down to 36 after T2 (agent mirror dedupe).
+    # Two prod-code violators remain at 35 (extractManagedProfiles, Edit) —
+    # T4/T5 splits will let us drop this to ~20.
+    gocyclo:
+      min-complexity: 36
+    # dupl: ratcheted from 1000 back to the upstream default of 180 now
+    # that T2 collapsed the codex/opencode mirror functions.
+    dupl:
+      threshold: 180
+    revive:
+      severity: warning
+      rules:
+        - name: blank-imports
+        - name: context-as-argument
+        - name: context-keys-type
+        - name: dot-imports
+        - name: error-return
+        - name: error-strings
+        - name: errorf
+        - name: exported
+          disabled: true
+        - name: increment-decrement
+        - name: indent-error-flow
+        - name: package-comments
+          disabled: true
+        - name: range
+        - name: receiver-naming
+        - name: redefines-builtin-id
+        - name: superfluous-else
+        - name: time-naming
+        - name: unexported-return
+        - name: unreachable-code
+        - name: unused-parameter
+          disabled: true
+        - name: var-declaration
+        - name: var-naming
+
+  exclusions:
+    presets:
+      - common-false-positives
+      - legacy
+      - std-error-handling
+    rules:
+      # API keys are persisted by design in the profile repository; gosec G117
+      # treats the field name as a leaked secret, which is a false positive.
+      - path: 'internal/adapters/profilefile/repository\.go'
+        linters:
+          - gosec
+      - path: '_test\.go'
+        linters:
+          - errcheck
+          - gosec
+          - gocyclo
+          - dupl
+          - revive
+      - path: 'tests/'
+        linters:
+          - errcheck
+          - gosec
+          - dupl
+
+issues:
+  max-issues-per-linter: 0
+  max-same-issues: 0

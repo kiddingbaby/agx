@@ -1,0 +1,45 @@
+name: release
+
+on:
+  push:
+    tags:
+      - 'v*'
+
+permissions:
+  contents: write
+
+jobs:
+  goreleaser:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Setup mise
+        uses: jdx/mise-action@v2
+
+      - name: Trust config
+        run: mise trust -y mise.toml
+
+      - name: Install toolchain
+        run: mise install
+
+      - name: Derive release notes path
+        id: notes
+        run: |
+          set -eu
+          version="${GITHUB_REF_NAME#v}"
+          path="docs/release-notes/v${version}.md"
+          if [ ! -f "$path" ]; then
+            echo "release notes file $path not found" >&2
+            exit 1
+          fi
+          echo "path=$path" >> "$GITHUB_OUTPUT"
+
+      - name: Run GoReleaser
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          HOMEBREW_TAP_GITHUB_TOKEN: ${{ secrets.HOMEBREW_TAP_GITHUB_TOKEN }}
+        run: mise exec -- goreleaser release --clean --release-notes="${{ steps.notes.outputs.path }}"
