@@ -86,7 +86,7 @@ func managedContextConfigPath(agent domainprofile.Agent, root string) string {
 	case domainprofile.AgentClaude:
 		return filepath.Join(root, "settings.json")
 	case domainprofile.AgentGemini:
-		return filepath.Join(root, ".gemini", ".env")
+		return filepath.Join(root, ".gemini", "settings.json")
 	case domainprofile.AgentOpenCode:
 		return filepath.Join(root, "xdg", "opencode", "opencode.json")
 	default:

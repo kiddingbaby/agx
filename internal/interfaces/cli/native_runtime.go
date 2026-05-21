@@ -11,13 +11,13 @@ import (
 )
 
 type nativeRuntime interface {
-	Run(agent domainprofile.Agent, contextPath string, args []string, stdin io.Reader, stdout, stderr io.Writer) error
+	Run(agent domainprofile.Agent, contextPath string, profile domainprofile.Profile, args []string, stdin io.Reader, stdout, stderr io.Writer) error
 }
 
 type execNativeRuntime struct{}
 
-func (execNativeRuntime) Run(agent domainprofile.Agent, contextPath string, args []string, stdin io.Reader, stdout, stderr io.Writer) error {
-	return runNativeCommand(agentBinaryName(agent), nativeRunArgs(agent, contextPath, args), nativeEnv(agent, contextPath), stdin, stdout, stderr)
+func (execNativeRuntime) Run(agent domainprofile.Agent, contextPath string, profile domainprofile.Profile, args []string, stdin io.Reader, stdout, stderr io.Writer) error {
+	return runNativeCommand(agentBinaryName(agent), nativeRunArgs(agent, contextPath, args), nativeEnv(agent, contextPath, profile), stdin, stdout, stderr)
 }
 
 func runNativeCommand(name string, args []string, env []string, stdin io.Reader, stdout, stderr io.Writer) error {
@@ -29,7 +29,7 @@ func runNativeCommand(name string, args []string, env []string, stdin io.Reader,
 	return cmd.Run()
 }
 
-func nativeEnv(agent domainprofile.Agent, contextPath string) []string {
+func nativeEnv(agent domainprofile.Agent, contextPath string, profile domainprofile.Profile) []string {
 	env := filteredEnv(nativeEnvRemovals(agent))
 	switch agent {
 	case domainprofile.AgentCodex:
@@ -37,8 +37,18 @@ func nativeEnv(agent domainprofile.Agent, contextPath string) []string {
 	case domainprofile.AgentClaude:
 		env = append(env, "CLAUDE_CONFIG_DIR="+contextPath)
 	case domainprofile.AgentGemini:
-		env = append(env, "HOME="+contextPath)
+		// gemini-cli redefines a module-private homedir() that consults
+		// GEMINI_CLI_HOME first, so this single env steers every state path
+		// (settings.json, projects.json, trustedFolders, sessions, ...) into
+		// the per-target context. The host $HOME is *not* swapped, so users
+		// retain access to ~/.ssh, ~/.gitconfig, etc.
 		env = append(env, "GEMINI_CLI_HOME="+contextPath)
+		// Inject credentials directly into the process environment. dotenv
+		// (used by gemini-cli) does not override pre-existing env, so this
+		// beats any ~/.gemini/.env discovered via cwd-walk or the homedir()
+		// fallback — and lets agx keep credentials off disk entirely.
+		env = append(env, "GEMINI_API_KEY="+profile.APIKey)
+		env = append(env, "GOOGLE_GEMINI_BASE_URL="+domainprofile.AgentBaseURL(domainprofile.AgentGemini, profile.BaseURL))
 		env = append(env, "GEMINI_CLI_TRUST_WORKSPACE=true")
 	case domainprofile.AgentOpenCode:
 		env = append(env, "XDG_CONFIG_HOME="+filepath.Join(contextPath, "xdg"))
@@ -57,10 +67,11 @@ func nativeEnvRemovals(agent domainprofile.Agent) map[string]struct{} {
 			removed[key] = struct{}{}
 		}
 	case domainprofile.AgentGemini:
+		// Strip every gemini-related env from the host. The values reapplied
+		// in nativeEnv above become the single source of truth.
 		for _, key := range []string{
 			"GOOGLE_GENAI_USE_VERTEXAI",
 			"GEMINI_CLI_HOME",
-			"HOME",
 			"GEMINI_API_KEY",
 			"GOOGLE_API_KEY",
 			"GOOGLE_GEMINI_BASE_URL",

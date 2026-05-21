@@ -94,31 +94,6 @@ func TestAgentBindPreservesRuntimeClaudeCurrentWhenStoredStateMissing(t *testing
 	}
 }
 
-func TestAgentBindPreservesRuntimeGeminiCurrentWhenStoredStateMissing(t *testing.T) {
-	repo := &fakeProfileRepo{profiles: map[string]domainprofile.Profile{
-		"relay-a": {Name: "relay-a", BaseURL: "https://relay-a.example/v1", APIKey: "sk-a", CreatedAt: time.Now(), UpdatedAt: time.Now()},
-		"relay-b": {Name: "relay-b", BaseURL: "https://relay-b.example/v1", APIKey: "sk-b", CreatedAt: time.Now(), UpdatedAt: time.Now()},
-	}}
-	state := &fakeStateRepo{}
-	gemini := &fakeGeminiSyncer{newFakeAgentSyncer("/tmp/gemini/.env")}
-	gemini.snapshotContent = []byte("GEMINI_API_KEY=\"sk-a\"\nGOOGLE_GEMINI_BASE_URL=\"https://relay-a.example/v1\"\n")
-	svc := NewProfileService(repo, state, nil, nil, gemini, nil)
-
-	result, err := svc.AgentBind(domainprofile.AgentGemini, "relay-b")
-	if err != nil {
-		t.Fatalf("AgentBind(gemini relay-b) error = %v", err)
-	}
-	if result.PreviousRelay != "relay-a" {
-		t.Fatalf("PreviousRelay = %q, want relay-a", result.PreviousRelay)
-	}
-	if state.state.Gemini.SourceProfile != "relay-a" {
-		t.Fatalf("state.Gemini.SourceProfile = %q, want relay-a", state.state.Gemini.SourceProfile)
-	}
-	if gemini.syncCalls != 0 {
-		t.Fatalf("gemini.syncCalls = %d, want 0", gemini.syncCalls)
-	}
-}
-
 func TestAgentBindPreservesRuntimeCodexCurrentWhenStoredStateMissing(t *testing.T) {
 	repo := &fakeProfileRepo{profiles: map[string]domainprofile.Profile{
 		"relay-a": {Name: "relay-a", BaseURL: "https://relay-a.example/v1", APIKey: "sk-a", CreatedAt: time.Now(), UpdatedAt: time.Now()},
@@ -216,48 +191,6 @@ func TestStateFallsBackWhenClaudeConfigIsUnreadable(t *testing.T) {
 	}
 	if !found {
 		t.Fatalf("Doctor().Issues = %+v, want runtime_config_unreadable", report.Issues)
-	}
-}
-
-func TestStateAndDoctorFallBackWhenGeminiManagedBlockIsIncomplete(t *testing.T) {
-	repo := &fakeProfileRepo{profiles: map[string]domainprofile.Profile{
-		"relay-a": {Name: "relay-a", BaseURL: "https://relay.example/v1", APIKey: "sk-a", CreatedAt: time.Now(), UpdatedAt: time.Now()},
-	}}
-	state := &fakeStateRepo{state: domainprofile.State{
-		Gemini: domainprofile.AgentBinding{
-			SourceProfile: "relay-a",
-			Status:        domainprofile.BindingStatusApplied,
-			ConfigPath:    "/tmp/gemini/.env",
-		},
-	}}
-	gemini := &fakeGeminiSyncer{newFakeAgentSyncer("/tmp/gemini/.env")}
-	gemini.snapshotContent = []byte("KEEP=1\n# >>> AGX managed Gemini env >>>\nGEMINI_API_KEY=\"sk-a\"\n")
-	svc := NewProfileService(repo, state, nil, nil, gemini, nil)
-
-	got, err := svc.State()
-	if err != nil {
-		t.Fatalf("State() error = %v, want fallback to stored state", err)
-	}
-	if got.Gemini.SourceProfile != "relay-a" || got.Gemini.ConfigPath != "/tmp/gemini/.env" {
-		t.Fatalf("State() = %+v, want stored gemini binding preserved", got.Gemini)
-	}
-
-	report, err := svc.Doctor()
-	if err != nil {
-		t.Fatalf("Doctor() error = %v", err)
-	}
-	if report.OK {
-		t.Fatalf("Doctor().OK = true, want managed block issue")
-	}
-	found := false
-	for _, issue := range report.Issues {
-		if issue.Code == "runtime_config_unreadable" && strings.Contains(issue.Message, "incomplete AGX managed block") {
-			found = true
-			break
-		}
-	}
-	if !found {
-		t.Fatalf("Doctor().Issues = %+v, want incomplete gemini managed block issue", report.Issues)
 	}
 }
 

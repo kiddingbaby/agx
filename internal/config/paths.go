@@ -15,7 +15,7 @@ type Paths struct {
 	ContextsDir        string
 	CodexConfigPath    string
 	ClaudeSettingsPath string
-	GeminiEnvPath      string
+	GeminiSettingsPath string
 	OpenCodeConfigPath string
 	BackupsDir         string
 }
@@ -36,7 +36,7 @@ func DefaultPaths() (Paths, error) {
 		ContextsDir:        filepath.Join(configDir, "contexts"),
 		CodexConfigPath:    filepath.Join(homeDir, ".codex", "config.toml"),
 		ClaudeSettingsPath: filepath.Join(homeDir, ".claude", "settings.json"),
-		GeminiEnvPath:      filepath.Join(homeDir, ".gemini", ".env"),
+		GeminiSettingsPath: filepath.Join(homeDir, ".gemini", "settings.json"),
 		OpenCodeConfigPath: filepath.Join(homeDir, ".config", "opencode", "opencode.json"),
 		BackupsDir:         filepath.Join(configDir, "backups"),
 	}, nil

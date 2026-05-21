@@ -3,12 +3,10 @@ package usecase
 import (
 	"encoding/json"
 	"fmt"
-	"strconv"
 	"strings"
 	"time"
 
 	domainprofile "github.com/kiddingbaby/agx/internal/domain/profile"
-	"github.com/kiddingbaby/agx/internal/ports"
 )
 
 type runtimeStateIssue struct {
@@ -23,12 +21,6 @@ type runtimeBindingResolution struct {
 	ConfigPath       string
 	PreserveExisting bool
 }
-
-const (
-	geminiManagedBlockBeginMarker = "# >>> AGX managed Gemini env >>>"
-	geminiManagedBlockEndMarker   = "# <<< AGX managed Gemini env <<<"
-	geminiSnapshotBundleFormat    = "agx-gemini-bundle-v1"
-)
 
 func (s *ProfileService) enrichRuntimeState(state *domainprofile.State, profiles []domainprofile.Profile) []runtimeStateIssue {
 	if state == nil {
@@ -130,6 +122,12 @@ func (s *ProfileService) detectRuntimeAgentRelay(agent domainprofile.Agent, prof
 			return runtimeBindingResolution{}, nil
 		}
 	case domainprofile.AgentGemini:
+		// gemini's credential and base URL are injected into the process
+		// environment at launch (see interfaces/cli/native_runtime.go) and
+		// never persisted to disk, so the on-disk settings.json carries only
+		// auth-selection + user-added MCP/extensions. We can't cross-check
+		// the binding against the relay list — settings.json existence is
+		// all we can validate. Trust state.yaml for the rest.
 		snapshot, err := s.gemini.Snapshot()
 		if err != nil {
 			return runtimeBindingResolution{Relay: current, PreserveExisting: true}, []runtimeStateIssue{runtimeSnapshotErrorIssue(agent, err)}
@@ -145,25 +143,7 @@ func (s *ProfileService) detectRuntimeAgentRelay(agent domainprofile.Agent, prof
 			}
 			return runtimeBindingResolution{}, nil
 		}
-		envContent := geminiSnapshotEnvContent(snapshot.Content)
-		if hasIncompleteManagedBlock(envContent, geminiManagedBlockBeginMarker, geminiManagedBlockEndMarker) {
-			return runtimeBindingResolution{Relay: current, PreserveExisting: true}, []runtimeStateIssue{runtimeSnapshotErrorIssue(agent, &ports.IncompleteManagedBlockError{
-				Agent:      agent,
-				ConfigPath: snapshot.ConfigPath,
-			})}
-		}
-
-		baseURL, apiKey := parseGeminiBindingSnapshot(snapshot.Content)
-		relay, ambiguous := chooseGeminiRelay(profiles, baseURL, apiKey, current)
-		if ambiguous {
-			return runtimeBindingResolution{Relay: current, PreserveExisting: true}, []runtimeStateIssue{{
-				Agent:   agent,
-				Code:    "runtime_binding_conflict",
-				Message: fmt.Sprintf("%s config matches multiple relays", agent),
-				Action:  runtimeRestoreAction(agent),
-			}}
-		}
-		return runtimeBindingResolution{Relay: relay, ConfigPath: snapshot.ConfigPath}, nil
+		return runtimeBindingResolution{Relay: current, ConfigPath: snapshot.ConfigPath, PreserveExisting: true}, nil
 	default:
 		return runtimeBindingResolution{Relay: current, PreserveExisting: true}, nil
 	}
@@ -180,12 +160,6 @@ func runtimeSnapshotErrorIssue(agent domainprofile.Agent, err error) runtimeStat
 
 func runtimeRestoreAction(agent domainprofile.Agent) string {
 	return fmt.Sprintf("run `agx restore %s` and rerun `agx doctor`", agent)
-}
-
-func hasIncompleteManagedBlock(content []byte, beginMarker, endMarker string) bool {
-	body := string(content)
-	start := strings.Index(body, beginMarker)
-	return start >= 0 && !strings.Contains(body[start:], endMarker)
 }
 
 func parseClaudeBindingSnapshot(content []byte) (string, string, error) {
@@ -281,64 +255,6 @@ func chooseClaudeRelay(profiles []domainprofile.Profile, helperRelay, baseURL, c
 	}
 }
 
-func parseGeminiBindingSnapshot(content []byte) (string, string) {
-	assignments := parseEnvAssignments(geminiSnapshotEnvContent(content))
-	return domainprofile.NormalizeBaseURL(assignments["GOOGLE_GEMINI_BASE_URL"]), strings.TrimSpace(assignments["GEMINI_API_KEY"])
-}
-
-func geminiSnapshotEnvContent(content []byte) []byte {
-	if len(content) == 0 {
-		return content
-	}
-	var payload struct {
-		Format string            `json:"format"`
-		Files  map[string]string `json:"files"`
-	}
-	if err := json.Unmarshal(content, &payload); err != nil {
-		return content
-	}
-	if payload.Format != geminiSnapshotBundleFormat {
-		return content
-	}
-	if payload.Files == nil {
-		return nil
-	}
-	return []byte(payload.Files[".env"])
-}
-
-func chooseGeminiRelay(profiles []domainprofile.Profile, baseURL, apiKey, current string) (string, bool) {
-	baseURL = domainprofile.NormalizeBaseURL(baseURL)
-	apiKey = strings.TrimSpace(apiKey)
-	current = domainprofile.NormalizeProfileName(current)
-
-	if baseURL == "" || apiKey == "" {
-		return "", false
-	}
-
-	var matches []string
-	for _, profile := range profiles {
-		if !profileBaseURLMatchesAgent(profile, domainprofile.AgentGemini, baseURL) {
-			continue
-		}
-		if strings.TrimSpace(profile.APIKey) != apiKey {
-			continue
-		}
-		matches = append(matches, profile.Name)
-	}
-
-	switch len(matches) {
-	case 0:
-		return "", false
-	case 1:
-		return matches[0], false
-	default:
-		if current != "" && containsProfile(matches, current) {
-			return current, true
-		}
-		return "", true
-	}
-}
-
 func matchingProfilesByBaseURL(profiles []domainprofile.Profile, baseURL string) []string {
 	if baseURL == "" {
 		return nil
@@ -374,34 +290,4 @@ func containsProfile(items []string, target string) bool {
 		}
 	}
 	return false
-}
-
-func parseEnvAssignments(content []byte) map[string]string {
-	values := map[string]string{}
-	for _, line := range strings.Split(string(content), "\n") {
-		line = strings.TrimSpace(line)
-		if line == "" || strings.HasPrefix(line, "#") {
-			continue
-		}
-		line = strings.TrimPrefix(line, "export ")
-		key, raw, ok := strings.Cut(line, "=")
-		if !ok {
-			continue
-		}
-		values[strings.TrimSpace(key)] = parseEnvValue(strings.TrimSpace(raw))
-	}
-	return values
-}
-
-func parseEnvValue(raw string) string {
-	if raw == "" {
-		return ""
-	}
-	if unquoted, err := strconv.Unquote(raw); err == nil {
-		return unquoted
-	}
-	if len(raw) >= 2 && raw[0] == '\'' && raw[len(raw)-1] == '\'' {
-		return raw[1 : len(raw)-1]
-	}
-	return raw
 }

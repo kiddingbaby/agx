@@ -1077,7 +1077,7 @@ func newProfileServiceForDirForTest(t *testing.T, storeDir string) *ProfileServi
 	}
 	codex := codexconfig.NewSyncer(paths.CodexConfigPath, paths.BackupsDir, "agx")
 	claude := claudeconfig.NewSyncer(paths.ClaudeSettingsPath, paths.BackupsDir, "agx")
-	gemini := geminiconfig.NewSyncer(paths.GeminiEnvPath, paths.BackupsDir)
+	gemini := geminiconfig.NewSyncer(paths.GeminiSettingsPath, paths.BackupsDir)
 	service := NewProfileService(repo, state, codex, claude, gemini, nil)
 	service.SetMutationLocker(lockfile.New(filepath.Join(storeDir, "agx.lock")))
 	return service

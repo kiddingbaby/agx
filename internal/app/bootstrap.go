@@ -36,7 +36,7 @@ func Bootstrap() (*Container, error) {
 	state := profilefile.NewStateRepository(paths.StatePath)
 	codexSyncer := codexconfig.NewSyncer(paths.CodexConfigPath, paths.BackupsDir, helperCommand)
 	claudeSyncer := claudeconfig.NewSyncer(paths.ClaudeSettingsPath, paths.BackupsDir, helperCommand)
-	geminiSyncer := geminiconfig.NewSyncer(paths.GeminiEnvPath, paths.BackupsDir)
+	geminiSyncer := geminiconfig.NewSyncer(paths.GeminiSettingsPath, paths.BackupsDir)
 	openCodeSyncer := opencodeconfig.NewSyncer(paths.OpenCodeConfigPath, paths.BackupsDir)
 	profileSvc := usecase.NewProfileService(profiles, state, codexSyncer, claudeSyncer, geminiSyncer, openCodeSyncer)
 	profileSvc.SetMutationLocker(startupLock)
@@ -54,8 +54,8 @@ func Bootstrap() (*Container, error) {
 			NewClaude: func(settingsPath, backupsDir, helperPath string) ports.ClaudeSyncer {
 				return claudeconfig.NewSyncer(settingsPath, backupsDir, helperPath)
 			},
-			NewGemini: func(envPath, backupsDir string) ports.GeminiSyncer {
-				return geminiconfig.NewSyncer(envPath, backupsDir)
+			NewGemini: func(settingsPath, backupsDir string) ports.GeminiSyncer {
+				return geminiconfig.NewSyncer(settingsPath, backupsDir)
 			},
 			NewOpenCode: func(configPath, backupsDir string) ports.OpenCodeSyncer {
 				return opencodeconfig.NewSyncer(configPath, backupsDir)

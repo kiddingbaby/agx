@@ -20,13 +20,15 @@ type fakeNativeRuntime struct {
 type fakeRunCall struct {
 	agent       domainprofile.Agent
 	contextPath string
+	profile     domainprofile.Profile
 	args        []string
 }
 
-func (f *fakeNativeRuntime) Run(agent domainprofile.Agent, contextPath string, args []string, stdin io.Reader, stdout, stderr io.Writer) error {
+func (f *fakeNativeRuntime) Run(agent domainprofile.Agent, contextPath string, profile domainprofile.Profile, args []string, stdin io.Reader, stdout, stderr io.Writer) error {
 	f.runCalls = append(f.runCalls, fakeRunCall{
 		agent:       agent,
 		contextPath: contextPath,
+		profile:     profile,
 		args:        append([]string(nil), args...),
 	})
 	return nil

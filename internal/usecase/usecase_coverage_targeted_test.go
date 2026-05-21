@@ -1,7 +1,6 @@
 package usecase
 
 import (
-	"encoding/json"
 	"errors"
 	"os"
 	"path/filepath"
@@ -537,9 +536,6 @@ func TestOpenCodeStateAndRuntimeCoverageTargetedBranches(t *testing.T) {
 	if got := runtimeSnapshotErrorIssue(domainprofile.AgentClaude, errors.New("boom")); got.Code != "runtime_config_unreadable" || !strings.Contains(got.Message, "boom") {
 		t.Fatalf("runtimeSnapshotErrorIssue() = %+v", got)
 	}
-	if !hasIncompleteManagedBlock([]byte("prefix\n# >>> AGX managed Gemini env >>>\nGOOGLE_GEMINI_BASE_URL=x"), geminiManagedBlockBeginMarker, geminiManagedBlockEndMarker) {
-		t.Fatal("hasIncompleteManagedBlock() = false, want true")
-	}
 	if relay := extractRelayNameFromHelper("agx __api-key relay-a"); relay != "relay-a" {
 		t.Fatalf("extractRelayNameFromHelper() = %q, want relay-a", relay)
 	}
@@ -555,38 +551,6 @@ func TestOpenCodeStateAndRuntimeCoverageTargetedBranches(t *testing.T) {
 		t.Fatal("parseClaudeBindingSnapshot(invalid JSON) unexpectedly succeeded")
 	}
 
-	if baseURL, apiKey := parseGeminiBindingSnapshot([]byte("GOOGLE_GEMINI_BASE_URL='https://relay.example'\nGEMINI_API_KEY=\" sk-a \"")); baseURL != "https://relay.example" || apiKey != "sk-a" {
-		t.Fatalf("parseGeminiBindingSnapshot() = (%q,%q), want normalized values", baseURL, apiKey)
-	}
-	bundle, err := json.Marshal(map[string]any{
-		"format": geminiSnapshotBundleFormat,
-		"files": map[string]string{
-			".env": "GOOGLE_GEMINI_BASE_URL='https://relay-b.example'\nGEMINI_API_KEY=\"sk-b\"\n",
-		},
-	})
-	if err != nil {
-		t.Fatalf("Marshal(bundle) error = %v", err)
-	}
-	if baseURL, apiKey := parseGeminiBindingSnapshot(bundle); baseURL != "https://relay-b.example" || apiKey != "sk-b" {
-		t.Fatalf("parseGeminiBindingSnapshot(bundle) = (%q,%q), want normalized bundle values", baseURL, apiKey)
-	}
-	if got := string(geminiSnapshotEnvContent(bundle)); !strings.Contains(got, "GEMINI_API_KEY=\"sk-b\"") {
-		t.Fatalf("geminiSnapshotEnvContent(bundle) = %q, want .env payload", got)
-	}
-	assignments := parseEnvAssignments([]byte("export FOO='bar'\nBAZ=qux\n# comment\nBROKEN\n"))
-	if assignments["FOO"] != "bar" || assignments["BAZ"] != "qux" || len(assignments) != 2 {
-		t.Fatalf("parseEnvAssignments() = %+v", assignments)
-	}
-	if got := parseEnvValue(`"quoted"`); got != "quoted" {
-		t.Fatalf("parseEnvValue(double quoted) = %q, want quoted", got)
-	}
-	if got := parseEnvValue("'single quoted'"); got != "single quoted" {
-		t.Fatalf("parseEnvValue(single quoted) = %q, want single quoted", got)
-	}
-	if got := parseEnvValue("plain"); got != "plain" {
-		t.Fatalf("parseEnvValue(plain) = %q, want plain", got)
-	}
-
 	if relay, outcome := chooseClaudeRelay(profiles, "relay-a", "https://relay.example", "relay-a"); relay != "relay-a" || outcome != claudeBindingResolved {
 		t.Fatalf("chooseClaudeRelay(resolved) = (%q,%q)", relay, outcome)
 	}
@@ -598,15 +562,6 @@ func TestOpenCodeStateAndRuntimeCoverageTargetedBranches(t *testing.T) {
 	}
 	if relay, outcome := chooseClaudeRelay(profiles, "", "", ""); relay != "" || outcome != claudeBindingNone {
 		t.Fatalf("chooseClaudeRelay(none) = (%q,%q)", relay, outcome)
-	}
-	if relay, ambiguous := chooseGeminiRelay(profiles, "https://relay-b.example", "sk-b", ""); relay != "relay-b" || ambiguous {
-		t.Fatalf("chooseGeminiRelay(resolved) = (%q,%v)", relay, ambiguous)
-	}
-	if relay, ambiguous := chooseGeminiRelay(profiles, "https://relay.example", "sk-a", "relay-c"); relay != "relay-c" || !ambiguous {
-		t.Fatalf("chooseGeminiRelay(ambiguous current) = (%q,%v)", relay, ambiguous)
-	}
-	if relay, ambiguous := chooseGeminiRelay(profiles, "", "", "relay-a"); relay != "" || ambiguous {
-		t.Fatalf("chooseGeminiRelay(missing data) = (%q,%v)", relay, ambiguous)
 	}
 	if matches := matchingProfilesByBaseURL(profiles, "https://relay.example"); len(matches) != 2 || !containsProfile(matches, "relay-a") || !containsProfile(matches, "relay-c") {
 		t.Fatalf("matchingProfilesByBaseURL() = %+v", matches)

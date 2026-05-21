@@ -141,12 +141,17 @@ func (r *Root) nativeError(err error) error {
 }
 
 func (r *Root) runAgentNative(agent domainprofile.Agent, args []string) error {
-	_, contextPath, err := r.profiles.CurrentTargetContext(agent)
+	target, contextPath, err := r.profiles.CurrentTargetContext(agent)
 	if err != nil {
 		r.printUserError(err)
 		return err
 	}
-	return r.native.Run(agent, contextPath, args, r.stdin, r.stdout, r.stderr)
+	profile, err := r.profiles.ManagedProfile(target.Name)
+	if err != nil {
+		r.printUserError(err)
+		return err
+	}
+	return r.native.Run(agent, contextPath, *profile, args, r.stdin, r.stdout, r.stderr)
 }
 
 func (r *Root) runInternalAPIKey(args []string) int {

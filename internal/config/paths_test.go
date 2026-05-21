@@ -36,8 +36,8 @@ func TestDefaultPaths(t *testing.T) {
 	if paths.ClaudeSettingsPath != filepath.Join(home, ".claude", "settings.json") {
 		t.Fatalf("ClaudeSettingsPath = %q, want %q", paths.ClaudeSettingsPath, filepath.Join(home, ".claude", "settings.json"))
 	}
-	if paths.GeminiEnvPath != filepath.Join(home, ".gemini", ".env") {
-		t.Fatalf("GeminiEnvPath = %q, want %q", paths.GeminiEnvPath, filepath.Join(home, ".gemini", ".env"))
+	if paths.GeminiSettingsPath != filepath.Join(home, ".gemini", "settings.json") {
+		t.Fatalf("GeminiSettingsPath = %q, want %q", paths.GeminiSettingsPath, filepath.Join(home, ".gemini", "settings.json"))
 	}
 	if paths.BackupsDir != filepath.Join(wantConfigDir, "backups") {
 		t.Fatalf("BackupsDir = %q, want %q", paths.BackupsDir, filepath.Join(wantConfigDir, "backups"))

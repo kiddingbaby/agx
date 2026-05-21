@@ -91,7 +91,7 @@ type ManagedPaths struct {
 type ManagedSyncerFactory struct {
 	NewCodex    func(configPath, backupsDir, helperCommand string) ports.CodexSyncer
 	NewClaude   func(settingsPath, backupsDir, helperPath string) ports.ClaudeSyncer
-	NewGemini   func(envPath, backupsDir string) ports.GeminiSyncer
+	NewGemini   func(settingsPath, backupsDir string) ports.GeminiSyncer
 	NewOpenCode func(configPath, backupsDir string) ports.OpenCodeSyncer
 }
 

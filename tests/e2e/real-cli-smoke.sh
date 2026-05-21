@@ -119,13 +119,18 @@ run_gemini_smoke() {
     return 1
   fi
 
-  grep -q '^GEMINI_API_KEY="sk-fake"$' "$home/.config/agx/contexts/gemini/targets/relay-a/.gemini/.env"
-  grep -q '^GOOGLE_GEMINI_BASE_URL="https://127.0.0.1:9"$' "$home/.config/agx/contexts/gemini/targets/relay-a/.gemini/.env"
+  # AGX injects GEMINI_API_KEY / GOOGLE_GEMINI_BASE_URL straight into the
+  # gemini process env; they are never persisted to disk. The only on-disk
+  # artifact AGX writes is settings.json (api-key auth + sandbox=false).
+  if [[ ! -f "$home/.config/agx/contexts/gemini/targets/relay-a/.gemini/settings.json" ]]; then
+    echo "[fail] gemini settings.json was not materialized" >&2
+    return 1
+  fi
   # Newer Gemini CLI versions may time out before surfacing a transport error
   # string. Treat any non-successful run as acceptable here as long as the CLI
-  # does not complain that the AGX-managed API key was missing.
+  # does not complain that the AGX-injected API key was missing.
   if grep -q 'must specify the GEMINI_API_KEY environment variable' "$out"; then
-    echo "[fail] gemini did not load AGX-managed .env" >&2
+    echo "[fail] gemini did not see AGX-injected GEMINI_API_KEY" >&2
     sed -n '1,160p' "$out" >&2 || true
     return 1
   fi

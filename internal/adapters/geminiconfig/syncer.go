@@ -5,7 +5,6 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
-	"strconv"
 	"strings"
 
 	"github.com/kiddingbaby/agx/internal/adapters/fileutil"
@@ -13,53 +12,50 @@ import (
 	"github.com/kiddingbaby/agx/internal/ports"
 )
 
-const (
-	beginMarker = "# >>> AGX managed Gemini env >>>"
-	endMarker   = "# <<< AGX managed Gemini env <<<"
-	bundleMagic = "agx-gemini-bundle-v1"
-)
-
 var _ ports.GeminiSyncer = (*Syncer)(nil)
 
+// Syncer materializes Gemini's settings.json inside an agx-managed context.
+// The Gemini credential (GEMINI_API_KEY) and base URL (GOOGLE_GEMINI_BASE_URL)
+// are injected into the process environment by the native runtime at launch
+// time; they are never persisted to disk. settings.json holds the
+// non-credential pieces — api-key auth selection, sandbox disabled — plus
+// whatever top-level keys the user adds (mcpServers, extensions, ui, ...).
 type Syncer struct {
-	envPath    string
-	backupsDir string
+	settingsPath string
+	backupsDir   string
 }
 
-type snapshotBundle struct {
-	Format   string            `json:"format"`
-	Files    map[string]string `json:"files,omitempty"`
-	Missing  []string          `json:"missing,omitempty"`
-	ModeHint string            `json:"mode_hint,omitempty"`
-}
-
-func NewSyncer(envPath, backupsDir string) *Syncer {
+func NewSyncer(settingsPath, backupsDir string) *Syncer {
 	return &Syncer{
-		envPath:    envPath,
-		backupsDir: filepath.Join(backupsDir, "gemini"),
+		settingsPath: settingsPath,
+		backupsDir:   filepath.Join(backupsDir, "gemini"),
 	}
 }
 
-func (s *Syncer) Sync(profile domainprofile.Profile) (*ports.GeminiSyncResult, error) {
-	existing, _, err := fileutil.ReadIfExists(s.envPath)
+// Sync ensures settings.json contains agx's required selections, preserving
+// any other keys the user (or a previous tool) added.
+func (s *Syncer) Sync(_ domainprofile.Profile) (*ports.GeminiSyncResult, error) {
+	settings, err := s.loadSettings()
 	if err != nil {
 		return nil, err
 	}
+	setNested(settings, []string{"security", "auth", "selectedType"}, "gemini-api-key")
+	setNested(settings, []string{"tools", "sandbox"}, false)
+	if err := fileutil.AtomicWriteJSON(s.settingsPath, settings, 0600); err != nil {
+		return nil, err
+	}
+	return &ports.GeminiSyncResult{ConfigPath: s.settingsPath}, nil
+}
 
-	stripped, err := stripManagedBlock(existing, s.envPath)
+func (s *Syncer) Snapshot() (*ports.AgentConfigSnapshot, error) {
+	content, exists, err := fileutil.ReadIfExists(s.settingsPath)
 	if err != nil {
 		return nil, err
 	}
-	next := appendManagedBlock(stripped, renderManagedBlock(profile))
-	if err := fileutil.AtomicWriteFile(s.envPath, []byte(next), 0600); err != nil {
-		return nil, err
-	}
-	if err := writeSettingsFile(filepath.Dir(s.envPath)); err != nil {
-		return nil, err
-	}
-
-	return &ports.GeminiSyncResult{
-		ConfigPath: s.envPath,
+	return &ports.AgentConfigSnapshot{
+		ConfigPath: s.settingsPath,
+		Exists:     exists,
+		Content:    []byte(content),
 	}, nil
 }
 
@@ -68,59 +64,23 @@ func (s *Syncer) Restore(backupPath string) (string, error) {
 	if err != nil {
 		return "", err
 	}
-	bundle, ok, err := decodeSnapshotBundle(data)
-	if err != nil {
-		return "", err
-	}
-	if !ok {
-		if err := fileutil.AtomicWriteFile(s.envPath, data, 0600); err != nil {
+	if strings.TrimSpace(string(data)) == "" {
+		if err := os.Remove(s.settingsPath); err != nil && !os.IsNotExist(err) {
 			return "", err
 		}
-		return s.envPath, nil
+		return s.settingsPath, nil
 	}
-	return s.restoreBundle(bundle)
-}
-
-func (s *Syncer) Snapshot() (*ports.AgentConfigSnapshot, error) {
-	content, exists, err := fileutil.ReadIfExists(s.envPath)
-	if err != nil {
-		return nil, err
+	if err := fileutil.AtomicWriteFile(s.settingsPath, data, 0600); err != nil {
+		return "", err
 	}
-	settingsPath := s.settingsPath()
-	settingsContent, settingsExists, err := fileutil.ReadIfExists(settingsPath)
-	if err != nil {
-		return nil, err
-	}
-	if !exists && !settingsExists {
-		return &ports.AgentConfigSnapshot{
-			ConfigPath: s.envPath,
-			Exists:     false,
-		}, nil
-	}
-	bundle, err := encodeSnapshotBundle(snapshotBundle{
-		Format: bundleMagic,
-		Files: map[string]string{
-			".env":          content,
-			"settings.json": settingsContent,
-		},
-		Missing: collectMissingPaths(exists, settingsExists),
-	})
-	if err != nil {
-		return nil, err
-	}
-	return &ports.AgentConfigSnapshot{
-		ConfigPath: s.envPath,
-		Exists:     true,
-		Content:    bundle,
-	}, nil
+	return s.settingsPath, nil
 }
 
 func (s *Syncer) CreateBackup(id string, content []byte) (string, error) {
 	if err := os.MkdirAll(s.backupsDir, 0700); err != nil {
 		return "", err
 	}
-	name := fmt.Sprintf(".env.%s.bak", id)
-	path := filepath.Join(s.backupsDir, name)
+	path := filepath.Join(s.backupsDir, fmt.Sprintf("settings.json.%s.bak", id))
 	if err := fileutil.AtomicWriteFile(path, content, 0600); err != nil {
 		return "", err
 	}
@@ -128,32 +88,10 @@ func (s *Syncer) CreateBackup(id string, content []byte) (string, error) {
 }
 
 func (s *Syncer) RemoveConfig() (string, error) {
-	existing, exists, err := fileutil.ReadIfExists(s.envPath)
-	if err != nil {
+	if err := os.Remove(s.settingsPath); err != nil && !os.IsNotExist(err) {
 		return "", err
 	}
-	if exists {
-		stripped, err := stripManagedBlock(existing, s.envPath)
-		if err != nil {
-			return "", err
-		}
-		next := strings.TrimSpace(stripped)
-		if next == "" {
-			if err := os.Remove(s.envPath); err != nil && !os.IsNotExist(err) {
-				return "", err
-			}
-		} else {
-			next += "\n"
-			if err := fileutil.AtomicWriteFile(s.envPath, []byte(next), 0600); err != nil {
-				return "", err
-			}
-		}
-	}
-
-	if err := os.Remove(s.settingsPath()); err != nil && !os.IsNotExist(err) {
-		return "", err
-	}
-	return s.envPath, nil
+	return s.settingsPath, nil
 }
 
 func (s *Syncer) DeleteBackup(backupPath string) error {
@@ -166,127 +104,35 @@ func (s *Syncer) DeleteBackup(backupPath string) error {
 	return nil
 }
 
-func stripManagedBlock(content, configPath string) (string, error) {
-	start := strings.Index(content, beginMarker)
-	if start < 0 {
-		return content, nil
+func (s *Syncer) loadSettings() (map[string]any, error) {
+	raw, exists, err := fileutil.ReadIfExists(s.settingsPath)
+	if err != nil {
+		return nil, err
 	}
-	end := strings.Index(content[start:], endMarker)
-	if end < 0 {
-		return "", &ports.IncompleteManagedBlockError{
-			Agent:      domainprofile.AgentGemini,
-			ConfigPath: configPath,
+	if !exists || strings.TrimSpace(raw) == "" {
+		return map[string]any{}, nil
+	}
+	var settings map[string]any
+	if err := json.Unmarshal([]byte(raw), &settings); err != nil {
+		return nil, fmt.Errorf("parse %s: %w", s.settingsPath, err)
+	}
+	if settings == nil {
+		return map[string]any{}, nil
+	}
+	return settings, nil
+}
+
+// setNested assigns value into a nested object inside m, creating
+// intermediate maps as needed. path must be non-empty.
+func setNested(m map[string]any, path []string, value any) {
+	cur := m
+	for _, key := range path[:len(path)-1] {
+		next, ok := cur[key].(map[string]any)
+		if !ok {
+			next = map[string]any{}
+			cur[key] = next
 		}
+		cur = next
 	}
-	end += start + len(endMarker)
-	if end < len(content) && content[end] == '\n' {
-		end++
-	}
-	return content[:start] + content[end:], nil
-}
-
-func appendManagedBlock(content, block string) string {
-	content = strings.TrimRight(content, "\n")
-	if content == "" {
-		return block + "\n"
-	}
-	return content + "\n\n" + block + "\n"
-}
-
-func renderManagedBlock(profile domainprofile.Profile) string {
-	var b strings.Builder
-	b.WriteString(beginMarker)
-	b.WriteString("\n")
-	b.WriteString("# Generated by AGX. Edit the AGX profile instead of this block.\n")
-	b.WriteString("GEMINI_API_KEY=")
-	b.WriteString(strconv.Quote(profile.APIKey))
-	b.WriteString("\n")
-	b.WriteString("GOOGLE_GEMINI_BASE_URL=")
-	b.WriteString(strconv.Quote(domainprofile.AgentBaseURL(domainprofile.AgentGemini, profile.BaseURL)))
-	b.WriteString("\n")
-	b.WriteString(endMarker)
-	return b.String()
-}
-
-func writeSettingsFile(dir string) error {
-	settingsPath := filepath.Join(dir, "settings.json")
-	content := `{
-  "security": {
-    "auth": {
-      "selectedType": "gemini-api-key"
-    }
-  },
-  "tools": {
-    "sandbox": false
-  }
-}
-`
-	return fileutil.AtomicWriteFile(settingsPath, []byte(content), 0600)
-}
-
-func (s *Syncer) settingsPath() string {
-	return filepath.Join(filepath.Dir(s.envPath), "settings.json")
-}
-
-func (s *Syncer) restoreBundle(bundle snapshotBundle) (string, error) {
-	envMissing := bundleMissing(bundle, ".env")
-	settingsMissing := bundleMissing(bundle, "settings.json")
-	if envMissing {
-		if err := os.Remove(s.envPath); err != nil && !os.IsNotExist(err) {
-			return "", err
-		}
-	} else if err := fileutil.AtomicWriteFile(s.envPath, []byte(bundle.Files[".env"]), 0600); err != nil {
-		return "", err
-	}
-
-	settingsPath := s.settingsPath()
-	if settingsMissing {
-		if err := os.Remove(settingsPath); err != nil && !os.IsNotExist(err) {
-			return "", err
-		}
-	} else if err := fileutil.AtomicWriteFile(settingsPath, []byte(bundle.Files["settings.json"]), 0600); err != nil {
-		return "", err
-	}
-	return s.envPath, nil
-}
-
-func collectMissingPaths(envExists, settingsExists bool) []string {
-	var missing []string
-	if !envExists {
-		missing = append(missing, ".env")
-	}
-	if !settingsExists {
-		missing = append(missing, "settings.json")
-	}
-	return missing
-}
-
-func encodeSnapshotBundle(bundle snapshotBundle) ([]byte, error) {
-	if bundle.Format == "" {
-		bundle.Format = bundleMagic
-	}
-	return json.Marshal(bundle)
-}
-
-func decodeSnapshotBundle(data []byte) (snapshotBundle, bool, error) {
-	var bundle snapshotBundle
-	if err := json.Unmarshal(data, &bundle); err != nil {
-		return snapshotBundle{}, false, nil
-	}
-	if bundle.Format != bundleMagic {
-		return snapshotBundle{}, false, nil
-	}
-	if bundle.Files == nil {
-		bundle.Files = map[string]string{}
-	}
-	return bundle, true, nil
-}
-
-func bundleMissing(bundle snapshotBundle, name string) bool {
-	for _, item := range bundle.Missing {
-		if item == name {
-			return true
-		}
-	}
-	return false
+	cur[path[len(path)-1]] = value
 }
