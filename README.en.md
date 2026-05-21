@@ -14,7 +14,7 @@
 > One relay profile (`base_url` + `api_key`) drives `codex`, `claude`,
 > `gemini`, and `opencode`. Each agent runs in an isolated managed context.
 
-中文：[README.md](README.md) · Docs: [User Guide](docs/user-guide.en.md) · [Architecture](docs/ARCHITECTURE.md)
+中文：[README.md](README.md) · User guide: [docs/user-guide.en.md](docs/user-guide.en.md)
 
 ---
 
@@ -39,31 +39,27 @@ agx run  <agent>  # launch the native CLI inside an isolated context
 agx doctor        # actionable recovery advice when something is off
 ```
 
-Every mutation snapshots profile / state / agent config before writing,
-so `backup` / `restore` / `doctor` can roll any change back. All four
-agents speak the same profile model.
+Every write is snapshotted first; any failure rolls back the entire
+change. All four agents speak the same profile model.
 
 ## Quick start
 
 ```bash
-# 1. Install (pick one path; see Install below for the others)
 brew install kiddingbaby/agx/agx
 
-# 2. Register a relay
 agx add work \
   --base-url https://relay.example/v1 \
   --api-key  sk-live
 
-# 3. Launch any agent — they all use this relay automatically
 agx use work
-agx run codex
+agx run codex      # every agent picks up this relay
 agx run claude
 ```
 
-agx materializes per-agent config under
-`~/.config/agx/contexts/<agent>/<name>/` and injects it when the native
-CLI is launched. Your host-level `~/.codex` / `~/.claude` / `~/.gemini`
-configs are left untouched.
+Per-agent config materializes under `~/.config/agx/contexts/<agent>/<name>/`
+and is injected when the native CLI is launched. Your host-level
+`~/.codex` / `~/.claude` / `~/.gemini` / `~/.config/opencode` are left
+untouched.
 
 ## Install
 
@@ -76,8 +72,7 @@ brew install kiddingbaby/agx/agx
 ### Prebuilt binary
 
 Download the matching archive from the
-[latest release](https://github.com/kiddingbaby/agx/releases/latest)
-(substitute the version you want):
+[latest release](https://github.com/kiddingbaby/agx/releases/latest):
 
 ```bash
 VERSION=v0.1.0
@@ -94,22 +89,10 @@ install -m 0755 /tmp/agx ~/.local/bin/agx
 go install github.com/kiddingbaby/agx/cmd/agx@latest
 ```
 
-### Build from source
+Linux / macOS on amd64 / arm64. Building from source is covered in
+[CONTRIBUTING.md](CONTRIBUTING.md).
 
-```bash
-git clone https://github.com/kiddingbaby/agx.git
-cd agx
-task dev:setup
-task build
-task install
-```
-
-- Binary installs to `~/.local/bin/agx` by default
-  (override with `BINDIR=/usr/local/bin task install`)
-- Go 1.24+; `mise.toml` declares the required toolchain
-- Linux / macOS on amd64 / arm64
-
-## Examples
+## Common tasks
 
 Switch between relays:
 
@@ -117,96 +100,92 @@ Switch between relays:
 agx add openai-direct   --base-url https://api.openai.com/v1            --api-key sk-...
 agx add anthropic-relay --base-url https://relay.example/anthropic/v1   --api-key sk-...
 
-agx use openai-direct  && agx run codex
+agx use openai-direct   && agx run codex
 agx use anthropic-relay && agx run claude
 ```
 
 Use a relay just once without changing the default:
 
 ```bash
-agx run codex openai-direct -- --help   # positional: this launch only
-AGX_PROFILE=openai-direct agx run codex # env: this shell / direnv-friendly
+agx run codex openai-direct -- --help     # positional: this launch only
+AGX_PROFILE=openai-direct agx run codex   # this shell; pairs with direnv for per-directory pinning
 ```
 
 Snapshot before a risky edit, roll back if needed:
 
 ```bash
-agx backup codex     # explicit snapshot of the current target
+agx backup codex                          # explicit snapshot of the current target
 agx edit work --api-key sk-rotated
 agx run codex
-# If the new key is wrong:
-agx restore codex    # roll back to the latest snapshot
+agx restore codex                         # back to the latest snapshot
 ```
 
-Diagnose and self-heal:
+Full command reference: [user guide](docs/user-guide.en.md).
+
+## When something is off
 
 ```bash
 agx doctor
-# Issues like unfinished_operation / orphan_managed_target each include
-# a suggested action — usually `agx restore <agent>`.
+```
+
+`doctor` lists every detected issue with a severity and an `issue code`,
+plus an **actionable** fix suggestion — usually a single
+`agx restore <agent>` does it. Every issue code is documented in
+[doctor-issues.md](docs/doctor-issues.md).
+
+To snapshot automatically before each `agx run`:
+
+```bash
+export AGX_AUTO_BACKUP=1
 ```
 
 ## How it works
 
 ```
 ┌──────────────┐    agx add / edit       ┌─────────────────────┐
-│ profile YAML │ ◀────────────────────── │   agx CLI (this)    │
-│  store       │                          │  • mutation guard   │
-└──────┬───────┘                          │  • per-target ctx   │
-       │ resolve                          │  • doctor / restore │
-       ▼                                  └──────────┬──────────┘
-┌──────────────┐                                     │
-│  derived     │   agx run <agent>                   │
-│  per-agent   │ ◀───────── exec native CLI ◀────────┘
-│  config      │            (codex / claude / gemini / opencode)
+│ profile YAML │ ◀────────────────────── │   agx CLI           │
+│  store       │                          │                     │
+└──────┬───────┘                          └──────────┬──────────┘
+       │ resolve                                     │
+       ▼                                             │
+┌──────────────┐    agx run <agent>                  │
+│  derived     │ ◀───────── exec native CLI ◀────────┘
+│  per-agent   │            (codex / claude / gemini / opencode)
+│  config      │
 └──────────────┘
 ```
 
-- **Profile is the first-class concept.** Every command revolves around
-  "which relay am I on right now"
-- **Mutation guard.** Each write captures a pre-image of profile /
-  state / agent config; any failure rolls every step back — panics
-  included (recover + re-panic preserves the non-zero exit)
-- **Per-target context.** Each agent runs inside its own
-  `contexts/<agent>/<name>/` tree; host-level config is never touched
-- **No daemon.** A plain CLI; an `flock` is only held while a command
-  is executing
+- **Isolated contexts.** Per-agent config lives in `contexts/<agent>/<name>/`; host dotfiles stay untouched
+- **Rollback built-in.** See the backup / restore example above
+- **No daemon.** A plain CLI; a file lock is only held while a command is running
 
-Full layout and extension points: [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md).
+Architecture details: [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md).
 
 ## Scope
 
 agx only handles **OpenAI-compatible** (`base_url` + `api_key`) relay
 endpoints. If what you actually need is:
 
-- OAuth login, native SDK, or an agent's built-in provider — launch
-  the native CLI directly; agx is not in the loop
+- OAuth login, native SDK, or an agent's built-in provider — launch the
+  native CLI directly; agx is not in the loop
 - Multi-user / team-level secret management — out of scope; agx is a
   single-user tool
 
 ## Status
 
-Pre-1.0:
+Pre-1.0. CLI commands, exit codes, JSON output, and doctor issue codes
+are stable promises; the on-disk layout is not yet frozen — integrate
+through the CLI rather than reading `~/.config/agx/` directly. See
+[compatibility policy](COMPATIBILITY.md) · [CLI contract](docs/cli-contract.md).
 
-- The main path (add / use / run / backup / restore / doctor) goes
-  through the full verification chain
-  (unit + interactive + e2e + Docker matrix)
-- Public contract: [CLI contract](docs/cli-contract.md) ·
-  [Doctor issue catalog](docs/doctor-issues.md) ·
-  [compatibility policy](COMPATIBILITY.md)
-- Internal state fields and on-disk layout may shift before 1.0 —
-  please do not depend on them
+Latest release: [release notes](docs/release-notes/) · Direction:
+[ROADMAP.md](ROADMAP.md)
 
-Latest release notes: [docs/release-notes/](docs/release-notes/) ·
-Direction: [ROADMAP.md](ROADMAP.md)
+## Community
 
-## Contributing
-
-Issues and PRs are welcome. Development flow, verification matrix, and
-PR checklist live in [CONTRIBUTING.md](CONTRIBUTING.md). Everyone is
-expected to follow the [Code of Conduct](CODE_OF_CONDUCT.md).
-
-Repo-level AI agent collaboration constraints: [AGENTS.md](AGENTS.md).
+- Ideas & discussion: [GitHub Discussions](https://github.com/kiddingbaby/agx/discussions)
+- Bugs & feature requests: [GitHub Issues](https://github.com/kiddingbaby/agx/issues)
+- Pull requests: [CONTRIBUTING.md](CONTRIBUTING.md) · [Code of Conduct](CODE_OF_CONDUCT.md)
 
 ## License
 
