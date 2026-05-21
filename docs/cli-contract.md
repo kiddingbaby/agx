@@ -54,7 +54,7 @@ and exit `1`.
 
 ## Command schemas
 
-### `agx add <name> --base-url URL --api-key KEY [--model MODEL]`
+### `agx add <name> --base-url URL --api-key KEY [--model MODEL] [--codex-wire-api chat|responses]`
 
 ```json
 {
@@ -66,10 +66,13 @@ and exit `1`.
     "api_key": "sk-...",
     "credential_ref": "api_key",
     "model": "",
+    "codex_wire_api": "",
     "provider_family": ""
   }
 }
 ```
+
+Empty `codex_wire_api` means "use the adapter default" (`responses`); pass `chat` to pin the profile to OpenAI Chat Completions wire.
 
 ### `agx edit <name> [flags]`
 
@@ -219,7 +222,7 @@ The following keys are **stable** and will not be removed or renamed
 without a deprecation cycle:
 
 - `managedProfileView`: `name`, `kind`, `current`, `base_url`, `api_key`,
-  `credential_ref`, `model`, `provider_family`, `agents`
+  `credential_ref`, `model`, `codex_wire_api`, `provider_family`, `agents`
 - `contextBackupView`: `id`, `target_kind`, `target_name`, `path`,
   `created_at`
 - `DoctorReport`: `ok`, `operation`, `issues`

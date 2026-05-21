@@ -188,7 +188,13 @@ func renderManagedBlock(profiles map[string]managedProfile, helperCommand string
 		b.WriteString("base_url = ")
 		b.WriteString(strconv.Quote(codexBaseURL(profile.BaseURL)))
 		b.WriteString("\n")
-		b.WriteString("wire_api = \"responses\"\n\n")
+		wireAPI := strings.TrimSpace(profile.WireAPI)
+		if wireAPI == "" {
+			wireAPI = string(domainprofile.CodexWireAPIResponses)
+		}
+		b.WriteString("wire_api = ")
+		b.WriteString(strconv.Quote(wireAPI))
+		b.WriteString("\n\n")
 		b.WriteString("[model_providers.")
 		b.WriteString(strconv.Quote(providerID))
 		b.WriteString(".auth]\n")
@@ -286,8 +292,11 @@ func extractManagedProfiles(content string) map[string]managedProfile {
 			if !ok {
 				continue
 			}
-			if key == "base_url" {
+			switch key {
+			case "base_url":
 				profile.BaseURL = unquoteTomlValue(value)
+			case "wire_api":
+				profile.WireAPI = unquoteTomlValue(value)
 			}
 		case "profile":
 			if trimmed == "" {

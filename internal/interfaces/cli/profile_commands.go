@@ -19,15 +19,17 @@ type managedProfileView struct {
 	APIKey         string   `json:"api_key,omitempty"`
 	CredentialRef  string   `json:"credential_ref,omitempty"`
 	Model          string   `json:"model,omitempty"`
+	CodexWireAPI   string   `json:"codex_wire_api,omitempty"`
 	ProviderFamily string   `json:"provider_family,omitempty"`
 	Agents         []string `json:"agents,omitempty"`
 }
 
 func (r *Root) newProfileAddCommand() *cobra.Command {
 	var (
-		baseURL string
-		apiKey  string
-		model   string
+		baseURL      string
+		apiKey       string
+		model        string
+		codexWireAPI string
 	)
 	cmd := &cobra.Command{
 		Use:           "add <profile>",
@@ -40,10 +42,11 @@ func (r *Root) newProfileAddCommand() *cobra.Command {
 				return err
 			}
 			profile, err := r.profiles.AddManagedProfile(args[0], domainprofile.Profile{
-				Kind:    domainprofile.ProfileKindRelay,
-				BaseURL: baseURL,
-				APIKey:  apiKey,
-				ModelID: model,
+				Kind:         domainprofile.ProfileKindRelay,
+				BaseURL:      baseURL,
+				APIKey:       apiKey,
+				ModelID:      model,
+				CodexWireAPI: domainprofile.CodexWireAPI(codexWireAPI),
 			})
 			if err != nil {
 				return r.reportError(err)
@@ -61,16 +64,18 @@ func (r *Root) newProfileAddCommand() *cobra.Command {
 	cmd.Flags().StringVar(&baseURL, "base-url", "", "relay base URL")
 	cmd.Flags().StringVar(&apiKey, "api-key", "", "inline relay API key")
 	cmd.Flags().StringVar(&model, "model", "", "default model for profile launchers")
+	cmd.Flags().StringVar(&codexWireAPI, "codex-wire-api", "", "codex wire api: chat | responses (default responses)")
 	r.addJSONOutputFlag(cmd)
 	return cmd
 }
 
 func (r *Root) newProfileEditCommand() *cobra.Command {
 	var (
-		name    string
-		baseURL string
-		apiKey  string
-		model   string
+		name         string
+		baseURL      string
+		apiKey       string
+		model        string
+		codexWireAPI string
 	)
 	cmd := &cobra.Command{
 		Use:           "edit <profile>",
@@ -82,7 +87,7 @@ func (r *Root) newProfileEditCommand() *cobra.Command {
 			if err != nil {
 				return err
 			}
-			if !cmd.Flags().Changed("name") && !cmd.Flags().Changed("base-url") && !cmd.Flags().Changed("api-key") && !cmd.Flags().Changed("model") {
+			if !cmd.Flags().Changed("name") && !cmd.Flags().Changed("base-url") && !cmd.Flags().Changed("api-key") && !cmd.Flags().Changed("model") && !cmd.Flags().Changed("codex-wire-api") {
 				return r.usageError(cmd)
 			}
 			existing, err := r.profiles.ManagedProfile(args[0])
@@ -104,6 +109,10 @@ func (r *Root) newProfileEditCommand() *cobra.Command {
 			}
 			if cmd.Flags().Changed("model") {
 				input.ModelID = &model
+			}
+			if cmd.Flags().Changed("codex-wire-api") {
+				wire := domainprofile.CodexWireAPI(codexWireAPI)
+				input.CodexWireAPI = &wire
 			}
 			result, err := r.profiles.EditManagedProfile(args[0], input)
 			if err != nil {
@@ -136,6 +145,7 @@ func (r *Root) newProfileEditCommand() *cobra.Command {
 	cmd.Flags().StringVar(&baseURL, "base-url", "", "relay base URL")
 	cmd.Flags().StringVar(&apiKey, "api-key", "", "inline relay API key")
 	cmd.Flags().StringVar(&model, "model", "", "default model for profile launchers")
+	cmd.Flags().StringVar(&codexWireAPI, "codex-wire-api", "", "codex wire api: chat | responses (default responses)")
 	r.addJSONOutputFlag(cmd)
 	return cmd
 }
@@ -278,6 +288,9 @@ func (r *Root) newProfileShowCommand() *cobra.Command {
 			}
 			if view.Model != "" {
 				fmt.Fprintf(r.stdout, "model: %s\n", view.Model)
+			}
+			if view.CodexWireAPI != "" {
+				fmt.Fprintf(r.stdout, "codex_wire_api: %s\n", view.CodexWireAPI)
 			}
 			if view.ProviderFamily != "" {
 				fmt.Fprintf(r.stdout, "provider_family: %s\n", view.ProviderFamily)
@@ -454,6 +467,7 @@ func toManagedProfileView(profile domainprofile.Profile, current bool) managedPr
 		Current:        current,
 		BaseURL:        profile.BaseURL,
 		Model:          profile.ModelID,
+		CodexWireAPI:   string(profile.CodexWireAPI),
 		ProviderFamily: string(profile.ProviderFamily),
 	}
 	switch {

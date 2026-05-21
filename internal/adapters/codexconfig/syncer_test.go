@@ -540,3 +540,91 @@ func TestRemoveConfigDeletesManagedFile(t *testing.T) {
 		t.Fatalf("config still exists, err = %v", err)
 	}
 }
+
+func TestSyncWiresChatProtocolWhenRequested(t *testing.T) {
+	dir := t.TempDir()
+	configPath := filepath.Join(dir, ".codex", "config.toml")
+	backupsDir := filepath.Join(dir, ".config", "agx", "backups")
+	syncer := NewSyncer(configPath, backupsDir, "agx")
+
+	if _, err := syncer.Sync(domainprofile.Profile{
+		Name:    "newapi",
+		BaseURL: "https://newapi.example/v1",
+		APIKey:  "sk-x",
+	}, ports.CodexSyncOptions{WireAPI: domainprofile.CodexWireAPIChat}); err != nil {
+		t.Fatalf("Sync(chat) error = %v", err)
+	}
+
+	got, err := os.ReadFile(configPath)
+	if err != nil {
+		t.Fatalf("ReadFile() error = %v", err)
+	}
+	text := string(got)
+	if !strings.Contains(text, "wire_api = \"chat\"") {
+		t.Fatalf("config=%q want wire_api=\"chat\"", text)
+	}
+	if strings.Contains(text, "wire_api = \"responses\"") {
+		t.Fatalf("config=%q must not also contain wire_api=\"responses\"", text)
+	}
+}
+
+func TestSyncPreservesPeerProfileWireAPI(t *testing.T) {
+	dir := t.TempDir()
+	configPath := filepath.Join(dir, ".codex", "config.toml")
+	backupsDir := filepath.Join(dir, ".config", "agx", "backups")
+	syncer := NewSyncer(configPath, backupsDir, "agx")
+
+	if _, err := syncer.Sync(domainprofile.Profile{
+		Name:    "oai",
+		BaseURL: "https://api.openai.com/v1",
+		APIKey:  "sk-o",
+	}, ports.CodexSyncOptions{WireAPI: domainprofile.CodexWireAPIResponses}); err != nil {
+		t.Fatalf("Sync(oai/responses) error = %v", err)
+	}
+	if _, err := syncer.Sync(domainprofile.Profile{
+		Name:    "newapi",
+		BaseURL: "https://newapi.example/v1",
+		APIKey:  "sk-n",
+	}, ports.CodexSyncOptions{WireAPI: domainprofile.CodexWireAPIChat}); err != nil {
+		t.Fatalf("Sync(newapi/chat) error = %v", err)
+	}
+
+	got, err := os.ReadFile(configPath)
+	if err != nil {
+		t.Fatalf("ReadFile() error = %v", err)
+	}
+	text := string(got)
+	// Re-syncing newapi must not flip oai back to chat or vice versa.
+	for _, want := range []string{
+		"[model_providers.\"agx/oai\"]",
+		"[model_providers.\"agx/newapi\"]",
+	} {
+		if !strings.Contains(text, want) {
+			t.Fatalf("config=%q missing %q", text, want)
+		}
+	}
+	oaiBlock := mustExtractProviderBlock(t, text, "agx/oai")
+	if !strings.Contains(oaiBlock, "wire_api = \"responses\"") {
+		t.Fatalf("oai block=%q want wire_api=\"responses\"", oaiBlock)
+	}
+	newapiBlock := mustExtractProviderBlock(t, text, "agx/newapi")
+	if !strings.Contains(newapiBlock, "wire_api = \"chat\"") {
+		t.Fatalf("newapi block=%q want wire_api=\"chat\"", newapiBlock)
+	}
+}
+
+func mustExtractProviderBlock(t *testing.T, content, providerID string) string {
+	t.Helper()
+	header := "[model_providers.\"" + providerID + "\"]"
+	idx := strings.Index(content, header)
+	if idx < 0 {
+		t.Fatalf("provider %q not found in %q", providerID, content)
+	}
+	rest := content[idx:]
+	// Block ends at the next [section] header.
+	next := strings.Index(rest[len(header):], "\n[")
+	if next < 0 {
+		return rest
+	}
+	return rest[:len(header)+next]
+}

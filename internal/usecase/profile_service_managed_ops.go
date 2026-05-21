@@ -197,7 +197,10 @@ func (s *ProfileService) syncRelayContext(agent domainprofile.Agent, root string
 		if syncer == nil {
 			return "", nil, &ManagedRuntimeUnavailableError{Agent: agent}
 		}
-		result, err := syncer.Sync(profile, ports.CodexSyncOptions{DefaultProfileName: profile.Name})
+		result, err := syncer.Sync(profile, ports.CodexSyncOptions{
+			DefaultProfileName: profile.Name,
+			WireAPI:            profile.CodexWireAPI,
+		})
 		if err != nil {
 			return "", nil, err
 		}

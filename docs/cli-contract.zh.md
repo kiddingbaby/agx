@@ -47,7 +47,7 @@ agx doctor -o json | jq '.issues[] | select(.severity == "error")'
 
 ## 命令 schema
 
-### `agx add <name> --base-url URL --api-key KEY [--model MODEL]`
+### `agx add <name> --base-url URL --api-key KEY [--model MODEL] [--codex-wire-api chat|responses]`
 
 ```json
 {
@@ -59,10 +59,13 @@ agx doctor -o json | jq '.issues[] | select(.severity == "error")'
     "api_key": "sk-...",
     "credential_ref": "api_key",
     "model": "",
+    "codex_wire_api": "",
     "provider_family": ""
   }
 }
 ```
+
+`codex_wire_api` 空字符串表示用默认值 `responses`；显式设为 `chat` 时即写入 profile。
 
 ### `agx edit <name> [flags]`
 
@@ -207,7 +210,7 @@ context 做一次 snapshot。失败以 stderr 上 `warning: ...` 提示但不阻
 下列 key **稳定**，不会无 deprecation 周期就被删或改名：
 
 - `managedProfileView`：`name`、`kind`、`current`、`base_url`、`api_key`、
-  `credential_ref`、`model`、`provider_family`、`agents`
+  `credential_ref`、`model`、`codex_wire_api`、`provider_family`、`agents`
 - `contextBackupView`：`id`、`target_kind`、`target_name`、`path`、
   `created_at`
 - `DoctorReport`：`ok`、`operation`、`issues`

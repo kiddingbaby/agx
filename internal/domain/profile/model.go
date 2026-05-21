@@ -1,6 +1,9 @@
 package profile
 
-import "time"
+import (
+	"strings"
+	"time"
+)
 
 type Agent string
 
@@ -37,13 +40,43 @@ const (
 	TargetKindRelay TargetKind = "relay"
 )
 
+// CodexWireAPI selects which OpenAI wire schema the codex CLI sends:
+// "responses" (default, OpenAI official) or "chat" (国内中转 / 国模 / 多数
+// 自建网关，走 /v1/chat/completions). Empty == default == "responses".
+type CodexWireAPI string
+
+const (
+	CodexWireAPIResponses CodexWireAPI = "responses"
+	CodexWireAPIChat      CodexWireAPI = "chat"
+)
+
+func (w CodexWireAPI) Valid() bool {
+	switch w.Normalized() {
+	case "", CodexWireAPIResponses, CodexWireAPIChat:
+		return true
+	}
+	return false
+}
+
+func (w CodexWireAPI) Normalized() CodexWireAPI {
+	return CodexWireAPI(strings.TrimSpace(strings.ToLower(string(w))))
+}
+
+func (w CodexWireAPI) Effective() CodexWireAPI {
+	if normalized := w.Normalized(); normalized != "" {
+		return normalized
+	}
+	return CodexWireAPIResponses
+}
+
 type Profile struct {
 	Name           string                 `yaml:"name"`
 	Kind           ProfileKind            `yaml:"kind,omitempty"`
 	BaseURL        string                 `yaml:"base-url,omitempty"`
 	APIKey         string                 `yaml:"api-key,omitempty"`
 	ModelID        string                 `yaml:"model,omitempty"`
-	ProviderFamily OpenCodeProviderFamily `yaml:"provider-family,omitempty"`
+	CodexWireAPI   CodexWireAPI           `yaml:"codex-wire-api,omitempty"`
+	ProviderFamily OpenCodeProviderFamily `yaml:"provider-family,omitempty"` // Deprecated: opencode syncer writes all 3 provider families; field kept for read compatibility only.
 	CreatedAt      time.Time              `yaml:"created-at"`
 	UpdatedAt      time.Time              `yaml:"updated-at"`
 }

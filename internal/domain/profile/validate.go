@@ -61,6 +61,7 @@ func NormalizeProfile(raw Profile) Profile {
 	raw.BaseURL = NormalizeBaseURL(raw.BaseURL)
 	raw.APIKey = strings.TrimSpace(raw.APIKey)
 	raw.ModelID = strings.TrimSpace(raw.ModelID)
+	raw.CodexWireAPI = raw.CodexWireAPI.Normalized()
 	raw.ProviderFamily = OpenCodeProviderFamily(strings.TrimSpace(strings.ToLower(string(raw.ProviderFamily))))
 	if raw.Kind == "" {
 		raw.Kind = ProfileKindRelay
@@ -87,6 +88,9 @@ func ValidateProfile(raw Profile) error {
 	}
 	if profile.ProviderFamily != "" && !profile.ProviderFamily.Valid() {
 		return fmt.Errorf("provider family must be one of: %s, %s, %s", OpenCodeProviderFamilyOpenAICompatible, OpenCodeProviderFamilyAnthropic, OpenCodeProviderFamilyGemini)
+	}
+	if !profile.CodexWireAPI.Valid() {
+		return fmt.Errorf("codex wire api must be %q or %q", CodexWireAPIChat, CodexWireAPIResponses)
 	}
 	if strings.ContainsAny(profile.ModelID, "\x00\n\r") {
 		return fmt.Errorf("model contains invalid characters")

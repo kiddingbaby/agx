@@ -91,9 +91,12 @@ agx current    # 只输出当前 profile 名称
 ```bash
 agx add openai-direct   --base-url https://api.openai.com/v1            --api-key sk-...
 agx add anthropic-relay --base-url https://relay.example/anthropic/v1   --api-key sk-...
+agx add newapi          --base-url https://newapi.example/v1            --api-key sk-... \
+  --codex-wire-api chat                                        # 国内中转 / 国模通常需要 chat 协议
 
-agx use openai-direct   && agx run codex
+agx use openai-direct   && agx run codex                       # 默认走 OpenAI Responses API
 agx use anthropic-relay && agx run claude
+agx use newapi          && agx run codex                       # 走 OpenAI Chat Completions
 ```
 
 临时挂一个中转，不动默认：

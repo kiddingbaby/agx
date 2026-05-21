@@ -16,8 +16,8 @@ agx 围绕中转 profile 提供四个核心动作：
 ### Profile
 
 ```bash
-agx add <name> --base-url <url> --api-key <key> [--model <id>]
-agx edit <name> [--name <new>] [--base-url ...] [--api-key ...] [--model ...]
+agx add <name> --base-url <url> --api-key <key> [--model <id>] [--codex-wire-api chat|responses]
+agx edit <name> [--name <new>] [--base-url ...] [--api-key ...] [--model ...] [--codex-wire-api ...]
 agx rm <name>
 agx ls
 agx show <name>
@@ -50,6 +50,7 @@ agx restore <agent>
 
 - 名称非空，仅允许字母、数字、`-`、`_`、`.`
 - `base_url` 和 `api_key` 必填；`model` 可选，但启动 `opencode` 时必填
+- `--codex-wire-api` 可选 `chat` / `responses`；不填默认 `responses`（OpenAI 官方友好）。国内中转 / NewAPI / 国模通常需要 `chat`
 - `edit --name` 重命名 profile 时会迁移引用它的所有 binding 和 managed target
 - 其他 `edit` 操作会立即 re-sync 所有引用该 profile 的 managed target（best-effort，失败结果在输出中列出）
 - `use` 仅切换 agx 当前 profile，不会改写所有 agent 的运行时

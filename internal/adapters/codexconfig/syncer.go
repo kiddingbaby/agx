@@ -30,6 +30,7 @@ type Syncer struct {
 type managedProfile struct {
 	Name            string
 	BaseURL         string
+	WireAPI         string
 	Extras          []string
 	ProfileID       string
 	ProfileProvider string
@@ -76,6 +77,7 @@ func (s *Syncer) Sync(profile domainprofile.Profile, options ports.CodexSyncOpti
 	entry := managedProfiles[profile.Name]
 	entry.Name = profile.Name
 	entry.BaseURL = profile.BaseURL
+	entry.WireAPI = string(options.WireAPI.Normalized().Effective())
 	if len(entry.Extras) == 0 {
 		entry.Extras = selectManagedProfileExtras(existing, managedProfiles)
 	}

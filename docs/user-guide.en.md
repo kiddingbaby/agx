@@ -16,8 +16,8 @@ agx organizes four core actions around a relay profile:
 ### Profile
 
 ```bash
-agx add <name> --base-url <url> --api-key <key> [--model <id>]
-agx edit <name> [--name <new>] [--base-url ...] [--api-key ...] [--model ...]
+agx add <name> --base-url <url> --api-key <key> [--model <id>] [--codex-wire-api chat|responses]
+agx edit <name> [--name <new>] [--base-url ...] [--api-key ...] [--model ...] [--codex-wire-api ...]
 agx rm <name>
 agx ls
 agx show <name>
@@ -50,6 +50,7 @@ agx restore <agent>
 
 - Name is non-empty and limited to letters, digits, `-`, `_`, `.`
 - `base_url` and `api_key` are required; `model` is optional in general but required when launching `opencode`
+- `--codex-wire-api` accepts `chat` or `responses`; defaults to `responses` (OpenAI-official friendly). Most Chinese relays / NewAPI / mixed-model gateways need `chat`
 - `edit --name` migrates every binding and managed target referencing the profile
 - Other `edit` flags re-sync every managed target that references the profile
   (best-effort; failures are listed in the output)

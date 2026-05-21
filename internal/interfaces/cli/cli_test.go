@@ -202,6 +202,64 @@ func TestAdapterShortcutCommandsV3(t *testing.T) {
 	}
 }
 
+func TestCodexWireAPIFlagSurfacesInProfile(t *testing.T) {
+	root, stdout, stderr, _, _ := newV2Root(t)
+
+	if code := root.Execute([]string{"add", "newapi", "--base-url", "https://newapi.example/v1", "--api-key", "sk-n", "--codex-wire-api", "chat", "-o", "json"}); code != 0 {
+		t.Fatalf("add code=%d stdout=%q stderr=%q", code, stdout.String(), stderr.String())
+	}
+	var addPayload struct {
+		Profile managedProfileView `json:"profile"`
+	}
+	decodeJSON(t, stdout.String(), &addPayload)
+	if addPayload.Profile.CodexWireAPI != "chat" {
+		t.Fatalf("add payload codex_wire_api=%q want chat", addPayload.Profile.CodexWireAPI)
+	}
+	stdout.Reset()
+	stderr.Reset()
+
+	if code := root.Execute([]string{"show", "newapi"}); code != 0 {
+		t.Fatalf("show code=%d stderr=%q", code, stderr.String())
+	}
+	if got := stdout.String(); !strings.Contains(got, "codex_wire_api: chat") {
+		t.Fatalf("show stdout=%q want codex_wire_api line", got)
+	}
+	stdout.Reset()
+	stderr.Reset()
+
+	if code := root.Execute([]string{"edit", "newapi", "--codex-wire-api", "responses", "-o", "json"}); code != 0 {
+		t.Fatalf("edit code=%d stdout=%q stderr=%q", code, stdout.String(), stderr.String())
+	}
+	var editPayload struct {
+		Profile managedProfileView `json:"profile"`
+	}
+	decodeJSON(t, stdout.String(), &editPayload)
+	if editPayload.Profile.CodexWireAPI != "responses" {
+		t.Fatalf("edit payload codex_wire_api=%q want responses", editPayload.Profile.CodexWireAPI)
+	}
+
+	if code := root.Execute([]string{"add", "bad", "--base-url", "https://x/v1", "--api-key", "sk", "--codex-wire-api", "grpc"}); code == 0 {
+		t.Fatalf("expected validation failure for invalid --codex-wire-api value, stdout=%q stderr=%q", stdout.String(), stderr.String())
+	}
+}
+
+func TestCodexWireAPIDefaultsToResponsesInProfile(t *testing.T) {
+	root, stdout, stderr, _, _ := newV2Root(t)
+
+	if code := root.Execute([]string{"add", "oai", "--base-url", "https://api.openai.com/v1", "--api-key", "sk-o", "-o", "json"}); code != 0 {
+		t.Fatalf("add code=%d stdout=%q stderr=%q", code, stdout.String(), stderr.String())
+	}
+	var payload struct {
+		Profile managedProfileView `json:"profile"`
+	}
+	decodeJSON(t, stdout.String(), &payload)
+	// Empty means "use adapter default" (responses); show + JSON should
+	// surface the empty value so contract stays explicit per profile YAML.
+	if payload.Profile.CodexWireAPI != "" {
+		t.Fatalf("default add payload codex_wire_api=%q want empty", payload.Profile.CodexWireAPI)
+	}
+}
+
 
 
 

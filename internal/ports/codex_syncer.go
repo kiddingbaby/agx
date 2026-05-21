@@ -58,6 +58,9 @@ type CodexSyncResult struct {
 
 type CodexSyncOptions struct {
 	DefaultProfileName string
+	// WireAPI selects "chat" or "responses". Empty value falls back to
+	// the adapter default (currently "responses").
+	WireAPI domainprofile.CodexWireAPI
 }
 
 type CodexSyncer interface {

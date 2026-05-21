@@ -17,6 +17,7 @@ type UpdateManagedProfileInput struct {
 	BaseURL        *string
 	APIKey         *string
 	ModelID        *string
+	CodexWireAPI   *domainprofile.CodexWireAPI
 	ProviderFamily *domainprofile.OpenCodeProviderFamily
 }
 
@@ -174,6 +175,9 @@ func (s *ProfileService) EditManagedProfile(name string, input UpdateManagedProf
 	if input.ModelID != nil {
 		next.ModelID = *input.ModelID
 	}
+	if input.CodexWireAPI != nil {
+		next.CodexWireAPI = *input.CodexWireAPI
+	}
 	if input.ProviderFamily != nil {
 		next.ProviderFamily = *input.ProviderFamily
 	}
@@ -326,6 +330,7 @@ func (s *ProfileService) resyncOneRelayTarget(agent domainprofile.Agent, profile
 		BaseURL:        profile.BaseURL,
 		APIKey:         apiKey,
 		ModelID:        profile.ModelID,
+		CodexWireAPI:   profile.CodexWireAPI,
 		ProviderFamily: profile.ProviderFamily,
 		CreatedAt:      createdAt,
 		UpdatedAt:      now,
