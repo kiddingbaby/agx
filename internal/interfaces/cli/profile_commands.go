@@ -217,17 +217,17 @@ func (r *Root) newProfileListCommand() *cobra.Command {
 				return nil
 			}
 			tw := tabwriter.NewWriter(r.stdout, 0, 0, 2, ' ', 0)
-			fmt.Fprintln(tw, "NAME\tKIND\tCURRENT\tBASE URL\tCREDENTIAL\tMODEL\tAGENTS")
+			fmt.Fprintln(tw, "NAME\tCURRENT\tBASE URL\tMODEL\tAGENTS")
 			for _, row := range views {
 				currentMarker := ""
 				if row.Current {
 					currentMarker = "*"
 				}
-				kindLabel := row.Kind
+				nameLabel := row.Name
 				if agent, _, derived := usecase.ParseDerivedProfileName(row.Name); derived {
-					kindLabel = fmt.Sprintf("%s (derived:%s)", row.Kind, agent)
+					nameLabel = fmt.Sprintf("%s (derived:%s)", row.Name, agent)
 				}
-				fmt.Fprintf(tw, "%s\t%s\t%s\t%s\t%s\t%s\t%s\n", row.Name, kindLabel, currentMarker, row.BaseURL, row.CredentialRef, row.Model, strings.Join(row.Agents, ","))
+				fmt.Fprintf(tw, "%s\t%s\t%s\t%s\t%s\n", nameLabel, currentMarker, row.BaseURL, row.Model, strings.Join(row.Agents, ","))
 			}
 			_ = tw.Flush()
 			return nil
