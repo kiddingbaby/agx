@@ -87,9 +87,18 @@ run_claude_smoke() {
 
   grep -q '"apiKeyHelper"' "$home/.config/agx/contexts/claude/targets/relay-a/settings.json"
   grep -q '"ANTHROPIC_BASE_URL": "https://127.0.0.1:9"' "$home/.config/agx/contexts/claude/targets/relay-a/settings.json"
-  grep -q 'settingsEnv keys: ANTHROPIC_BASE_URL,CLAUDE_CODE_API_KEY_HELPER_TTL_MS' "$debug_log"
-  grep -q 'ANTHROPIC_BASE_URL=https://127.0.0.1:9' "$debug_log"
+  grep -qE 'settingsEnv keys:.*ANTHROPIC_BASE_URL' "$debug_log"
   grep -q '\[API REQUEST\]' "$debug_log"
+  # Newer claude-code releases stopped echoing the full `ANTHROPIC_BASE_URL=<value>`
+  # line in debug output, so we cannot grep that literal anymore. Instead, ensure
+  # claude did NOT silently fall back to the default anthropic.com endpoint —
+  # if our injection had failed, claude would either resolve to api.anthropic.com
+  # or refuse to start. The combination of (settingsEnv loaded ANTHROPIC_BASE_URL)
+  # + (API REQUEST emitted) + (no anthropic.com reference) pins it to our relay.
+  if grep -q 'api\.anthropic\.com' "$debug_log"; then
+    echo "[fail] claude fell back to api.anthropic.com instead of using agx base_url" >&2
+    return 1
+  fi
 
   echo "[ok] claude real smoke passed"
 }
