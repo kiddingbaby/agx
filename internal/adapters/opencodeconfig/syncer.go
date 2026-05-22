@@ -180,12 +180,11 @@ func (s *Syncer) RemoveProfile(name string) (string, error) {
 		settings["provider"] = providers
 	}
 
-	if current, _ := settings["model"].(string); current != "" {
+	if current, _ := settings["model"].(string); current != "" &&
 		// Per-family providers store the model as "agx-<name>-<family>/<model>".
 		// Legacy single-provider format was "agx-<name>/<model>".
-		if strings.HasPrefix(current, prefix+"/") || strings.HasPrefix(current, prefix+"-") {
-			delete(settings, "model")
-		}
+		(strings.HasPrefix(current, prefix+"/") || strings.HasPrefix(current, prefix+"-")) {
+		delete(settings, "model")
 	}
 	if isEmptyManagedConfig(settings) {
 		if err := os.Remove(s.configPath); err != nil && !os.IsNotExist(err) {

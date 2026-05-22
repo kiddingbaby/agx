@@ -188,12 +188,9 @@ func renderManagedBlock(profiles map[string]managedProfile, helperCommand string
 		b.WriteString("base_url = ")
 		b.WriteString(strconv.Quote(codexBaseURL(profile.BaseURL)))
 		b.WriteString("\n")
-		wireAPI := strings.TrimSpace(profile.WireAPI)
-		if wireAPI == "" {
-			wireAPI = string(domainprofile.CodexWireAPIResponses)
-		}
+		wireAPI := domainprofile.CodexWireAPI(profile.WireAPI).Effective()
 		b.WriteString("wire_api = ")
-		b.WriteString(strconv.Quote(wireAPI))
+		b.WriteString(strconv.Quote(string(wireAPI)))
 		b.WriteString("\n\n")
 		b.WriteString("[model_providers.")
 		b.WriteString(strconv.Quote(providerID))
