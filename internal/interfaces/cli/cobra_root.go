@@ -53,6 +53,7 @@ applied change.`,
 		r.newVersionCommand(),
 		r.newGenManCommand(),
 		r.newInternalAPIKeyCommand(),
+		r.newMcpCommand(),
 	)
 	return root
 }

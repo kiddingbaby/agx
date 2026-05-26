@@ -116,6 +116,7 @@ func (r *Root) printHelp() {
 	fmt.Fprintln(r.stdout, "  agx run <agent> [profile] [-- native args...]")
 	fmt.Fprintln(r.stdout, "  agx restore <agent>")
 	fmt.Fprintln(r.stdout, "  agx backup <agent>")
+	fmt.Fprintln(r.stdout, "  agx mcp <serve|list|register|...>")
 	fmt.Fprintln(r.stdout, "  agx doctor")
 	fmt.Fprintln(r.stdout, "  agx version")
 	fmt.Fprintln(r.stdout, "  agx completion {bash|zsh|fish|powershell}")

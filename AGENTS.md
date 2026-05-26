@@ -4,7 +4,7 @@
 
 ## 范围
 
-agx 是一个 CLI，管理中转 profile 并把 profile 同步到 `codex` / `claude` / `gemini` / `opencode`。
+agx 是一个 CLI，管理中转 profile 并把 profile 同步到 `codex` / `claude` / `gemini` / `opencode`，同时内嵌一个本地 MCP gateway（`agx mcp serve`）把四家 agent 共用一个聚合 endpoint。
 
 ## 事实来源
 

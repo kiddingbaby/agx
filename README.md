@@ -117,6 +117,34 @@ agx restore codex                         # 不对的话回到最近一次 snaps
 
 完整命令参考：[用户指南](docs/user-guide.md)。
 
+## MCP gateway
+
+agx 自带一个本地 MCP gateway：四家 agent 都连同一个 endpoint，背后聚合 N 个真实
+MCP server，所有 tool call 记一份 jsonl 审计日志。
+
+```bash
+# 1) 注册下游 MCP servers（stdio / http 都行）
+agx mcp register context7 --url https://mcp.context7.com/mcp
+agx mcp register serena   -- serena start-mcp-server --context=codex
+agx mcp register playwright --env-passthrough DISPLAY,XAUTHORITY -- node /path/to/playwright-mcp.js
+
+# 2) 起 daemon（systemd / nohup / docker 自管生命周期）
+agx mcp serve
+
+# 3) 各家 agent 启动前自动 inject endpoint（也可手动）
+agx mcp sync     # 一次性同步到所有现有 target
+agx run codex    # 启动时再自动 inject 当前 agent 的当前 target
+```
+
+`agx mcp` 子命令完整集合：`serve / list / show / register / deregister / enable
+/ disable / test / sync / clear`。配置在 `~/.config/agx/mcp/servers.yaml`，审计
+日志默认 `~/.config/agx/mcp/audit.log`（需要在 `gateway.audit.enabled: true` 时
+启用）。
+
+已知 v1 限制：下游 MCP server 的 `list_changed` / `cancellation` / `progress` /
+`elicitation` 通知暂未透传到上游 agent；resources 也不参与 fan-out。这些都不影响
+基本的 tools/prompts 调用。
+
 ## 出问题时
 
 ```bash

@@ -7,6 +7,8 @@ import (
 	"text/tabwriter"
 
 	domainprofile "github.com/kiddingbaby/agx/internal/domain/profile"
+	"github.com/kiddingbaby/agx/internal/mcpgateway"
+	"github.com/kiddingbaby/agx/internal/mcpinject"
 	"github.com/kiddingbaby/agx/internal/usecase"
 	"github.com/spf13/cobra"
 )
@@ -516,7 +518,39 @@ func (r *Root) runManagedLaunch(agent domainprofile.Agent, profileName string, a
 		return exitCodeError{code: 1}
 	}
 	r.maybeAutoBackup(agent)
+	r.autoInjectMcpEndpoint(agent)
 	return r.runAgentNative(agent, args)
+}
+
+// autoInjectMcpEndpoint best-effort updates the agent's managed context
+// with the configured MCP gateway endpoint before launch. Failures are
+// reported to stderr but never block launch — running an agent without
+// the gateway is degraded but valid, and we don't want a broken
+// servers.yaml to brick `agx run`.
+func (r *Root) autoInjectMcpEndpoint(agent domainprofile.Agent) {
+	cfgPath, err := mcpgateway.DefaultConfigPath()
+	if err != nil {
+		return
+	}
+	cfg, err := mcpgateway.LoadConfig(cfgPath)
+	if err != nil || cfg == nil {
+		return
+	}
+	ep := mcpEndpointFromConfig(cfg)
+	if strings.TrimSpace(ep.URL) == "" {
+		return
+	}
+	target, contextPath, err := r.profiles.CurrentTargetContext(agent)
+	if err != nil || target.Kind != domainprofile.TargetKindRelay || strings.TrimSpace(contextPath) == "" {
+		return
+	}
+	path := mcpinject.ConfigPath(agent, contextPath)
+	if path == "" {
+		return
+	}
+	if err := mcpinject.Inject(agent, path, ep); err != nil {
+		fmt.Fprintf(r.stderr, "Warning: mcp endpoint inject failed for %s: %v\n", agent, err)
+	}
 }
 
 // envProfileOverride lets the user pin a relay profile for a single
